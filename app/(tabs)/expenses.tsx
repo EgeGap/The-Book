@@ -3,6 +3,8 @@ import { Alert, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Screen } from "@/components/ui/Screen";
 import { Chip } from "@/components/ui/Chip";
+import { AppText } from "@/components/ui/Text";
+import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatTile } from "@/components/StatTile";
 import { ExpenseCard } from "@/components/ExpenseCard";
@@ -18,6 +20,7 @@ import {
 } from "@/lib/expenseAnalytics";
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from "@/lib/constants";
 import { EXPENSE_CATEGORY_LABELS, S } from "@/lib/strings";
+import { exportExpenses } from "@/lib/export";
 import { formatAmount } from "@/lib/utils";
 import { useExpenseStore } from "@/store/useExpenseStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -31,6 +34,7 @@ export default function ExpensesScreen() {
   const eurToTry = useSettingsStore((s) => s.eurToTry);
   const rates = useMemo(() => ({ usdToTry, eurToTry }), [usdToTry, eurToTry]);
   const [filter, setFilter] = useState<"all" | ExpenseCategory>("all");
+  const [exporting, setExporting] = useState(false);
 
   const monthly = useMemo(() => monthlyTotal(expenses, rates, base), [expenses, rates, base]);
   const yearly = useMemo(() => yearlyTotal(expenses, rates, base), [expenses, rates, base]);
@@ -51,6 +55,17 @@ export default function ExpensesScreen() {
       { text: S.common.cancel, style: "cancel" },
       { text: S.expense.delete, style: "destructive", onPress: () => removeExpense(id) },
     ]);
+
+  const doExport = async (fmt: "json" | "csv") => {
+    try {
+      setExporting(true);
+      await exportExpenses(expenses, fmt);
+    } catch {
+      Alert.alert(S.settings.exportFail, S.settings.exportFailBody);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   if (expenses.length === 0) {
     return (
@@ -73,6 +88,18 @@ export default function ExpensesScreen() {
       </View>
       <View className="mb-4">
         <StatTile label={S.expense.activeSubs} value={String(activeCount(expenses))} sub={`${expenses.length} toplam`} icon="card-outline" />
+      </View>
+
+      <View className="mb-4 flex-row items-center gap-2">
+        <AppText variant="label" className="flex-1">
+          {S.common.export}
+        </AppText>
+        <View className="w-24">
+          <Button label="JSON" variant="secondary" icon="code-outline" loading={exporting} onPress={() => doExport("json")} />
+        </View>
+        <View className="w-24">
+          <Button label="CSV" variant="secondary" icon="grid-outline" loading={exporting} onPress={() => doExport("csv")} />
+        </View>
       </View>
 
       <UpcomingPayments items={upcoming} base={base} rates={rates} onPress={(id) => router.push(`/expense/${id}`)} />
