@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "SMC Journal",
+    "slug": "smc-trading-journal",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "smcjournal",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.smcjournal.app"
+    },
+    "android": {
+      "package": "com.smcjournal.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0A0A0A"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "SMC Journal needs access to your photos so you can attach before/after chart screenshots to a trade.",
+          "cameraPermission": "SMC Journal needs camera access so you can snap a chart screenshot for a trade."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}
