@@ -21,6 +21,7 @@ import {
 import { EXPENSE_CATEGORIES, type ExpenseCategory } from "@/lib/constants";
 import { EXPENSE_CATEGORY_LABELS, S } from "@/lib/strings";
 import { exportExpenses } from "@/lib/export";
+import { pickJSONArray, validateExpenses } from "@/lib/importData";
 import { formatAmount } from "@/lib/utils";
 import { useExpenseStore } from "@/store/useExpenseStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -29,12 +30,14 @@ export default function ExpensesScreen() {
   const router = useRouter();
   const expenses = useExpenseStore((s) => s.expenses);
   const removeExpense = useExpenseStore((s) => s.removeExpense);
+  const importExpenses = useExpenseStore((s) => s.importExpenses);
   const base = useSettingsStore((s) => s.baseCurrency);
   const usdToTry = useSettingsStore((s) => s.usdToTry);
   const eurToTry = useSettingsStore((s) => s.eurToTry);
   const rates = useMemo(() => ({ usdToTry, eurToTry }), [usdToTry, eurToTry]);
   const [filter, setFilter] = useState<"all" | ExpenseCategory>("all");
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const monthly = useMemo(() => monthlyTotal(expenses, rates, base), [expenses, rates, base]);
   const yearly = useMemo(() => yearlyTotal(expenses, rates, base), [expenses, rates, base]);
@@ -67,6 +70,25 @@ export default function ExpensesScreen() {
     }
   };
 
+  const doImport = async () => {
+    try {
+      setImporting(true);
+      const arr = await pickJSONArray();
+      if (!arr) return; // cancelled
+      const valid = validateExpenses(arr);
+      if (valid.length === 0) {
+        Alert.alert(S.data.importFail, S.data.importNone);
+        return;
+      }
+      const n = await importExpenses(valid);
+      Alert.alert(S.data.importDone, S.data.importDoneCount(n));
+    } catch {
+      Alert.alert(S.data.importFail, S.data.importFailBody);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   if (expenses.length === 0) {
     return (
       <Screen>
@@ -76,6 +98,18 @@ export default function ExpensesScreen() {
           ctaLabel={S.expense.emptyAdd}
           onCta={() => router.push("/expense/new")}
         />
+        <View className="pb-8">
+          <Button
+            label={S.expense.import}
+            variant="secondary"
+            icon="download-outline"
+            loading={importing}
+            onPress={doImport}
+          />
+          <AppText variant="muted" className="mt-2 text-center">
+            {S.expense.importHint}
+          </AppText>
+        </View>
       </Screen>
     );
   }
@@ -100,6 +134,16 @@ export default function ExpensesScreen() {
         <View className="w-24">
           <Button label="CSV" variant="secondary" icon="grid-outline" loading={exporting} onPress={() => doExport("csv")} />
         </View>
+      </View>
+
+      <View className="mb-4">
+        <Button
+          label={S.expense.import}
+          variant="secondary"
+          icon="download-outline"
+          loading={importing}
+          onPress={doImport}
+        />
       </View>
 
       <UpcomingPayments items={upcoming} base={base} rates={rates} onPress={(id) => router.push(`/expense/${id}`)} />

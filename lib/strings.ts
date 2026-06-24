@@ -298,21 +298,6 @@ export const S = {
     cantClose: "Kapatılamıyor",
     alreadyClosed: "Bu işlem zaten kapalı.",
   },
-  ai: {
-    title: "Hızlı Kayıt (AI)",
-    intro: "İşlemi tek bir cümleyle anlat; AI formu doldursun, sen onayla.",
-    placeholder:
-      "Örn: 4H discount OB'den BTC long, Asya low'u süpürüldü, %1 risk, stop low'un altında, hedef equilibrium",
-    parse: "Cümleyi Çöz",
-    parsing: "Cümle çözümleniyor...",
-    failed: "Cümleyi anlayamadım, tekrar dener misin?",
-    network: "Bağlantı hatası — yazdığın cümle duruyor, tekrar dene.",
-    noKey:
-      "AI anahtarı ayarlı değil. EXPO_PUBLIC_ANTHROPIC_API_KEY ortam değişkenini ayarla.",
-    filled: "AI doldurdu — sayıları kontrol edip kaydet.",
-    mic: "Sesli giriş",
-    micOff: "Sesli giriş bu derlemede kapalı (metinle yaz).",
-  },
   expense: {
     tab: "Giderler",
     add: "Gider Ekle",
@@ -359,8 +344,15 @@ export const S = {
     fxHint: "Manuel kur (otomatik çekme yok, offline kalır).",
     dashLine: (amount: string) => `Bu ayki sabit giderin: ${amount}.`,
     dashRNeed: (r: string) => `Karşılamak için ≈ ${r} gerekiyor.`,
-    aiTitle: "Hızlı Gider Ekle (AI)",
-    aiIntro: "Gideri tek cümleyle anlat; AI formu doldursun, sen onayla.",
-    aiPlaceholder: "Örn: Netflix ayda 9.99 dolar, her ayın 25'i",
+    import: "İçe Aktar (JSON)",
+    importHint: "Başka cihazdan dışa aktardığın gider JSON'unu yükle.",
+  },
+  data: {
+    importDone: "İçe aktarıldı",
+    importDoneCount: (n: number) => `${n} gider eklendi/güncellendi.`,
+    importNone: "Dosyada geçerli gider bulunamadı.",
+    importFail: "İçe aktarma başarısız",
+    importFailBody:
+      "Geçerli bir JSON dosyası seç (uygulamadan dışa aktardığın gider dosyası).",
   },
 } as const;

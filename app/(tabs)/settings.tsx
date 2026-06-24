@@ -8,7 +8,6 @@ import { Field, TextField } from "@/components/ui/Field";
 import { Segmented } from "@/components/ui/Segmented";
 import { CustomListEditor } from "@/components/CustomListEditor";
 import { exportTrades } from "@/lib/export";
-import { sampleTrades } from "@/lib/seed";
 import { parseNum } from "@/lib/utils";
 import { CURRENCIES } from "@/lib/constants";
 import { S } from "@/lib/strings";
@@ -60,9 +59,9 @@ export default function SettingsScreen() {
   };
 
   const confirmReseed = () =>
-    Alert.alert("Sıfırla & yeniden yükle?", "Bu işlem tüm kayıtları siler ve 10 örnek işlemi geri yükler.", [
+    Alert.alert("Tüm işlemleri sil?", "Bu işlem kayıtlı tüm işlemleri kalıcı olarak siler.", [
       { text: "İptal", style: "cancel" },
-      { text: "Sıfırla", style: "destructive", onPress: () => reseed(sampleTrades()) },
+      { text: "Sil", style: "destructive", onPress: () => reseed([]) },
     ]);
 
   return (
@@ -185,7 +184,7 @@ export default function SettingsScreen() {
       </Section>
 
       <Section title="Veri">
-        <Button label="Sıfırla & örnek veriyi yükle" variant="danger" icon="refresh-outline" onPress={confirmReseed} />
+        <Button label="Tüm işlemleri sil" variant="danger" icon="trash-outline" onPress={confirmReseed} />
       </Section>
 
       <AppText variant="muted" className="mb-4 text-center">

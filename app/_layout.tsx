@@ -7,7 +7,6 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "nativewind";
 import { deleteSeededExpenses, initDb } from "@/lib/db";
-import { seedIfEmpty } from "@/lib/seed";
 import { useTradeStore } from "@/store/useTradeStore";
 import { useExpenseStore } from "@/store/useExpenseStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
@@ -57,7 +56,6 @@ export default function RootLayout() {
     (async () => {
       try {
         await initDb();
-        await seedIfEmpty();
         await deleteSeededExpenses(); // one-time cleanup of the old demo expenses
         await hydrateTrades();
         await hydrateExpenses();

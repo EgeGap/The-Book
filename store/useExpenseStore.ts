@@ -22,6 +22,7 @@ interface ExpenseState {
   togglePause: (id: string) => Promise<void>;
   removeExpense: (id: string) => Promise<void>;
   reseed: (expenses: Expense[]) => Promise<void>;
+  importExpenses: (list: Expense[]) => Promise<number>;
 }
 
 export const useExpenseStore = create<ExpenseState>((set, get) => ({
@@ -77,5 +78,12 @@ export const useExpenseStore = create<ExpenseState>((set, get) => ({
   reseed: async (expenses) => {
     await bulkInsertExpenses(expenses);
     set({ expenses: await getAllExpenses() });
+  },
+
+  importExpenses: async (list) => {
+    if (list.length === 0) return 0;
+    await bulkInsertExpenses(list); // upsert by id — merges with existing
+    set({ expenses: await getAllExpenses() });
+    return list.length;
   },
 }));
