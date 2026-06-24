@@ -85,6 +85,15 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="analiz"
+        options={{
+          title: S.tabs.analiz,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="trending-up" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="calendar"
         options={{
           title: S.tabs.calendar,

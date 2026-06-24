@@ -13,6 +13,7 @@ const DEFAULTS: Settings = {
   baseCurrency: "TRY",
   usdToTry: 41,
   eurToTry: 45,
+  financialApiKey: "",
 };
 
 interface SettingsState extends Settings {
@@ -63,6 +64,7 @@ export const useSettingsStore = create<SettingsState>()(
         usdToTry: s.usdToTry,
         eurToTry: s.eurToTry,
         lastUsedExpense: s.lastUsedExpense,
+        financialApiKey: s.financialApiKey,
       }),
       onRehydrateStorage: () => (state) => {
         state?.update({});

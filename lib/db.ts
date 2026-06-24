@@ -32,3 +32,7 @@ export const deleteExpense = impl.deleteExpense;
 export const countExpenses = impl.countExpenses;
 export const bulkInsertExpenses = impl.bulkInsertExpenses;
 export const deleteSeededExpenses = impl.deleteSeededExpenses;
+
+export const getAllStockAnalyses = impl.getAllStockAnalyses;
+export const upsertStockAnalysis = impl.upsertStockAnalysis;
+export const deleteStockAnalysis = impl.deleteStockAnalysis;

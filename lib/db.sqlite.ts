@@ -1,5 +1,5 @@
 import * as SQLite from "expo-sqlite";
-import type { Expense, Trade } from "./types";
+import type { Expense, StockAnalysisRecord, Trade } from "./types";
 import type {
   Confluence,
   Currency,
@@ -72,6 +72,11 @@ export async function initDb(): Promise<void> {
       notes TEXT NOT NULL,
       startedAt INTEGER NOT NULL,
       createdAt INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS stock_analyses (
+      ticker TEXT PRIMARY KEY NOT NULL,
+      reportJson TEXT NOT NULL,
+      updatedAt INTEGER NOT NULL
     );
   `);
 }
@@ -339,4 +344,37 @@ export async function bulkInsertExpenses(expenses: Expense[]): Promise<void> {
 export async function deleteSeededExpenses(): Promise<void> {
   const db = await getDb();
   await db.runAsync(`DELETE FROM expenses WHERE id LIKE 'expseed\\_%' ESCAPE '\\'`);
+}
+
+// ── Stock analysis cache ──────────────────────────────────────────────────────
+
+interface StockAnalysisRow {
+  ticker: string;
+  reportJson: string;
+  updatedAt: number;
+}
+
+function rowToStockAnalysis(r: StockAnalysisRow): StockAnalysisRecord {
+  return { ticker: r.ticker, report: JSON.parse(r.reportJson), updatedAt: r.updatedAt };
+}
+
+export async function getAllStockAnalyses(): Promise<StockAnalysisRecord[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<StockAnalysisRow>(
+    `SELECT ticker, reportJson, updatedAt FROM stock_analyses ORDER BY updatedAt DESC`,
+  );
+  return rows.map(rowToStockAnalysis);
+}
+
+export async function upsertStockAnalysis(record: StockAnalysisRecord): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO stock_analyses (ticker, reportJson, updatedAt) VALUES (?,?,?)`,
+    [record.ticker, JSON.stringify(record.report), record.updatedAt],
+  );
+}
+
+export async function deleteStockAnalysis(ticker: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(`DELETE FROM stock_analyses WHERE ticker = ?`, [ticker]);
 }

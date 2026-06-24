@@ -172,6 +172,18 @@ export default function SettingsScreen() {
         />
       </Section>
 
+      <Section title={S.stock.apiKeyLabel}>
+        <Field label={S.stock.apiKeyLabel} hint={S.stock.apiKeyHint}>
+          <TextField
+            defaultValue={s.financialApiKey ?? ""}
+            onChangeText={(v) => s.update({ financialApiKey: v })}
+            autoCapitalize="none"
+            autoCorrect={false}
+            placeholder="fmp_..."
+          />
+        </Field>
+      </Section>
+
       <Section title="Dışa aktar">
         <View className="flex-row gap-3">
           <View className="flex-1">

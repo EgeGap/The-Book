@@ -31,6 +31,9 @@ which recurring mistakes lose it.
   unit-tested functions** in [`lib/analytics.ts`](lib/analytics.ts).
 - **Settings** — risk defaults, starting balance, custom setups/confluences,
   JSON/CSV export, dark/light theme (dark default).
+- **Analiz** — grounded, Turkish, scenario-based stock research reports (web
+  search + optional fundamentals API, never hallucinated numbers). See
+  [Analiz (Hisse Senedi Araştırma Raporu)](#analiz-hisse-senedi-araştırma-raporu) below.
 
 ---
 
@@ -180,32 +183,6 @@ Bir işlemi saniyeler içinde kaydetmek için yeni akış:
 - **Yansıtma kapanışta:** hatalar, notlar ve "sonrası" ekran görüntüsü yalnızca
   işlemi **kapatırken** sorulur — yansıtmanın doğal olduğu an.
 
-### Hızlı Kayıt (AI) — tek cümleyle giriş
-Yeni İşlem ekranının üstündeki **"Hızlı Kayıt (AI)"** kartına işlemi tek bir
-cümleyle yaz, örn:
-
-> "4H discount OB'den BTC long, Asya low'u süpürüldü, %1 risk, stop low'un altında,
-> hedef equilibrium"
-
-Cümle Anthropic API'ye gönderilir, gelen JSON forma doldurulur ve **sen onaylamadan
-kaydedilmez** (özellikle giriş/SL/TP sayıları düzenlenebilir kalır).
-[`lib/aiParse.ts`](lib/aiParse.ts) — `claude-sonnet-4-6`, güvenli JSON ayrıştırma,
-enum eşleme. Ayrıştırma başarısız olursa form manuel olarak kullanılır.
-
-**Kurulum — API anahtarı (zorunlu, sadece AI için):**
-```bash
-# proje kökünde .env dosyası (gizli tutun, .gitignore zaten kapsıyor)
-EXPO_PUBLIC_ANTHROPIC_API_KEY=sk-ant-...
-```
-Anahtar yoksa uygulamanın geri kalanı normal çalışır; sadece AI kartı uyarı verir.
-Anahtar **koda gömülmez**, ortam değişkeninden okunur. Web'de çalışması için istek
-`anthropic-dangerous-direct-browser-access` başlığıyla gönderilir.
-
-> **Sesli giriş:** mikrofon butonu yer tutucudur — güvenilir STT Expo Go/web'de
-> hazır gelmediği için metin girişiyle gönderilir. Etkinleştirmek için
-> `expo-speech-recognition` kurup [`components/AIQuickLog.tsx`](components/AIQuickLog.tsx)
-> içindeki yorumlu stub'ı doldurun.
-
 ### Türkçe arayüz
 Tüm kullanıcı metinleri [`lib/strings.ts`](lib/strings.ts) içinde toplanmıştır
 (`S` nesnesi + setup/seans/bölge/yön/sonuç/hata etiket haritaları). Kod
@@ -243,14 +220,71 @@ her dönem otomatik sayar. Trading özellikleri tamamen korunur; bu additif bir 
   altındaki ödeme yöntemi/notlar serbest. Son kullanılan para birimi & kategori
   ön-doldurulur. **Silme yerine "Durdur"** (active=false) öne çıkarılır; tam silme
   ayrı, ikincil aksiyon.
-- **Hızlı Gider Ekle (AI):** "Netflix ayda 9.99 dolar, her ayın 25'i" → JSON → form
-  (mevcut `lib/aiParse.ts` altyapısı, `parseExpenseSentence`). Aynı kural: tutar/tarih
-  kullanıcı onayı olmadan kaydedilmez. `EXPO_PUBLIC_ANTHROPIC_API_KEY` ister
-  (trade AI ile aynı anahtar).
-
 **Analytics** — hepsi saf fonksiyon: [`lib/expenseAnalytics.ts`](lib/expenseAnalytics.ts)
 (`monthlyTotal`, `yearlyTotal`, `totalByCategory`, `upcomingPayments`,
 `mostExpensiveSubscriptions`, `convert`, `nextBillingDate`) + Jest testleri.
 
 > Not: `experiments.typedRoutes` kapatıldı — yeni route ekledikçe çıkan tipli-route
 > tazeleme sürtünmesini önlemek için (çalışma zamanına etkisi yok).
+
+---
+
+## Analiz (Hisse Senedi Araştırma Raporu)
+
+Hisse kodu girip (BIST: `THYAO`, `ASELS`… veya yabancı: `AAPL`, `NVDA`…) o şirket
+için **gerçek veriye dayalı**, Türkçe, senaryo bazlı bir finansal rapor üreten ek
+modül. Trading ve Giderler özellikleri tamamen korunur; **"Analiz"** sekmesi
+"Takvim"in yanına eklendi.
+
+### Veri ilkesi: gerçek veri, halüsinasyon yok
+Model hiçbir rakamı **icat etmez**. Akış:
+1. Kullanıcı isteğe bağlı bir Financial Modeling Prep API anahtarı girmişse,
+   o anahtarla şirketin temel verileri (gelir, net kâr, F/K, F/DD…) önce çekilir
+   ve modele **ground truth** olarak verilir.
+2. Model, Anthropic'in **web_search** aracıyla son haberleri, son finansal
+   sonuçları, sektör/rakip bilgisini ve güncel fiyatı arar.
+3. Rapor bu bulunan verilere **dayanarak** yazılır; bulunamayan her alan `null` +
+   `dataGaps` listesinde dürüstçe belirtilir — asla tahmin edilmez.
+
+BIST hisseleri için yapılandırılmış API kapsamı zayıf olduğundan model KAP
+açıklamaları ve haber kaynaklarına dayanır; verinin tarihi raporda her zaman
+görünür (`asOfDate`, `fundamentals.note`).
+
+### Rapor içeriği
+Özet · Değerleme (ucuz/makul/pahalı rozeti) · Kısa (0-6 ay) / Orta (6-24 ay) /
+Uzun (2-5 yıl) vadeli **bear/base/bull senaryolu** fiyat görünümü (tek kesin sayı
+yasak — her zaman olasılıklı senaryo) · Temel veriler · Güçlü yönler · Riskler ·
+Sektör & rakipler · Tarihli son haberler · Kaynaklar (tıklanır link) · Güven
+seviyesi · Eksik veriler listesi. Rapor altında her zaman sabit yasal uyarı
+görünür: *"Bu rapor yapay zeka tarafından üretilmiştir, yatırım tavsiyesi
+değildir..."*
+
+[`lib/stockAnalysis.ts`](lib/stockAnalysis.ts) — sistem promptu, Anthropic
+çağrısı (`claude-sonnet-4-6`, `web_search_20250305` aracı, `max_tokens: 4000`),
+opsiyonel FMP fetch'i ve modelin döndürdüğü (güvenilmeyen) JSON'un savunmacı
+normalizasyonu.
+
+### Önbellekleme (maliyet kontrolü)
+Web araması yavaş ve token-yoğun olduğu için her rapor **cihazda lokal**
+saklanır (SQLite `stock_analyses` tablosu, web'de AsyncStorage — proje
+local-first olduğu için Firestore yerine aynı yerel desen kullanıldı). Aynı
+hisseyi tekrar açtığında rapor anında önbellekten gelir; **otomatik yenileme
+yoktur**, kullanıcı "Yeniden Analiz Et" ile tetikler. Daha önce analiz edilen
+hisseler arama çubuğunun altında kayıtlı kısayollar (chip) olarak görünür.
+
+### Opsiyonel: Financial Modeling Prep API anahtarı
+**Ayarlar** ekranında "Finansal Veri API Anahtarı" alanına ücretsiz bir
+[Financial Modeling Prep](https://site.financialmodelingprep.com/) anahtarı
+eklenebilir. Anahtar yoksa özellik **yine çalışır** — sadece web aramasına
+dayanır ve fundamentals daha çok "web kaynaklı, doğrulayın" niteliğinde olur.
+Anahtar sadece bu cihazda (Ayarlar/AsyncStorage) saklanır, hiçbir yere
+gönderilmez/loglanmaz.
+
+### Hata durumları
+- Geçersiz/JSON-dışı model yanıtı → "Rapor oluşturulamadı, tekrar dener misin?"
+  (girilen hisse kodu kaybolmaz).
+- Ağ hatası → aynı şekilde tekrar denenebilir mesajı.
+- `EXPO_PUBLIC_ANTHROPIC_API_KEY` yoksa → net uyarı, uygulama çökmez.
+- Tanınmayan/yetersiz veri olan hisse kodu → model `confidence: "düşük"` +
+  `dataGaps` ile işaretler; arayüzde "Bu kod için yeterli veri bulunamadı"
+  görünür.

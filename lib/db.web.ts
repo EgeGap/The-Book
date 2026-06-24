@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { Expense, Trade } from "./types";
+import type { Expense, StockAnalysisRecord, Trade } from "./types";
 
 /**
  * WEB fallback for the data layer.
@@ -121,4 +121,38 @@ export async function bulkInsertExpenses(expenses: Expense[]): Promise<void> {
 /** One-time cleanup: remove demo-seed expenses (id prefix "expseed_"). */
 export async function deleteSeededExpenses(): Promise<void> {
   await writeExpenses((await readExpenses()).filter((e) => !e.id.startsWith("expseed_")));
+}
+
+// ── Stock analysis cache ──────────────────────────────────────────────────────
+
+const STOCK_KEY = "smc/stock-analyses";
+
+async function readStockAnalyses(): Promise<StockAnalysisRecord[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STOCK_KEY);
+    return raw ? (JSON.parse(raw) as StockAnalysisRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeStockAnalyses(list: StockAnalysisRecord[]): Promise<void> {
+  await AsyncStorage.setItem(STOCK_KEY, JSON.stringify(list));
+}
+
+export async function getAllStockAnalyses(): Promise<StockAnalysisRecord[]> {
+  const all = await readStockAnalyses();
+  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function upsertStockAnalysis(record: StockAnalysisRecord): Promise<void> {
+  const all = await readStockAnalyses();
+  const idx = all.findIndex((x) => x.ticker === record.ticker);
+  if (idx >= 0) all[idx] = record;
+  else all.unshift(record);
+  await writeStockAnalyses(all);
+}
+
+export async function deleteStockAnalysis(ticker: string): Promise<void> {
+  await writeStockAnalyses((await readStockAnalyses()).filter((x) => x.ticker !== ticker));
 }

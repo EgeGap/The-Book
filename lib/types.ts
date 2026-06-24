@@ -105,6 +105,13 @@ export interface Settings {
   usdToTry: number; // manual FX (no auto-fetch — stays simple & offline)
   eurToTry: number;
   lastUsedExpense?: LastUsedExpense;
+
+  /**
+   * Optional Financial Modeling Prep API key for hard fundamentals on stock
+   * analysis. Stored locally only (same trust model as the rest of this
+   * local-first app — never sent anywhere but financialmodelingprep.com).
+   */
+  financialApiKey?: string;
 }
 
 /** Local-only account record (AsyncStorage via useAuthStore). */
@@ -113,4 +120,85 @@ export interface User {
   email: string | null;
   isAnonymous: boolean;
   createdAt: number;
+}
+
+// ── Stock analysis ───────────────────────────────────────────────────────────
+
+export type StockVerdict = "ucuz" | "makul" | "pahalı";
+export type NewsImpact = "olumlu" | "olumsuz" | "nötr";
+export type AnalysisConfidence = "düşük" | "orta" | "yüksek";
+
+/** A bear/base/bull scenario for one time horizon. False precision is banned. */
+export interface ScenarioOutlook {
+  bear: string;
+  base: string;
+  bull: string;
+  baseProbability: string;
+}
+
+/**
+ * The full grounded financial report for one ticker. Every hard figure must
+ * trace to fetched data (web search and/or the optional fundamentals API) —
+ * fields the model couldn't find are `null` and listed in `dataGaps`, never
+ * guessed.
+ */
+export interface StockReport {
+  ticker: string;
+  companyName: string;
+  market: string;
+  currency: string;
+  currentPrice: number | null;
+  marketCap: string | null;
+  asOfDate: string;
+  summary: string;
+
+  fundamentals: {
+    revenue: string | null;
+    netIncome: string | null;
+    profitMargin: string | null;
+    peRatio: number | null;
+    pbRatio: number | null;
+    debtToEquity: string | null;
+    revenueGrowthYoY: string | null;
+    note: string;
+  };
+
+  sector: {
+    name: string;
+    positioning: string;
+    competitors: string[];
+  };
+
+  recentNews: {
+    date: string;
+    headline: string;
+    impact: NewsImpact;
+  }[];
+
+  strengths: string[];
+  risks: string[];
+
+  valuation: {
+    verdict: StockVerdict;
+    reasoning: string;
+    fairValueRange: string | null;
+  };
+
+  outlook: {
+    short: ScenarioOutlook;
+    medium: ScenarioOutlook;
+    long: ScenarioOutlook;
+  };
+
+  sources: { title: string; url: string }[];
+
+  confidence: AnalysisConfidence;
+  dataGaps: string[];
+}
+
+/** Cached report for one ticker, persisted locally (no Firestore — local-first). */
+export interface StockAnalysisRecord {
+  ticker: string;
+  report: StockReport;
+  updatedAt: number;
 }
