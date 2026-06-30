@@ -6,7 +6,7 @@ import {
   startOfDay,
 } from "date-fns";
 import type { Currency, ExpenseCategory } from "./constants";
-import type { Expense } from "./types";
+import type { Expense, PriceHistoryEntry } from "./types";
 
 /**
  * All expense math lives here as PURE functions: Expense[] (+ FX rates + base
@@ -15,7 +15,6 @@ import type { Expense } from "./types";
 
 export interface FxRates {
   usdToTry: number;
-  eurToTry: number;
 }
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -24,7 +23,6 @@ const safeRate = (r: number) => (Number.isFinite(r) && r > 0 ? r : 1);
 /** Any amount -> TRY using the manual rates. */
 function toTry(amount: number, currency: Currency, rates: FxRates): number {
   if (currency === "USD") return amount * safeRate(rates.usdToTry);
-  if (currency === "EUR") return amount * safeRate(rates.eurToTry);
   return amount;
 }
 
@@ -37,7 +35,6 @@ export function convert(
 ): number {
   const tl = toTry(amount, currency, rates);
   if (base === "USD") return r2(tl / safeRate(rates.usdToTry));
-  if (base === "EUR") return r2(tl / safeRate(rates.eurToTry));
   return r2(tl);
 }
 
@@ -129,4 +126,103 @@ export function upcomingPayments(
     })
     .filter((p) => p.daysUntil >= 0 && p.daysUntil <= withinDays)
     .sort((a, b) => a.daysUntil - b.daysUntil);
+}
+
+/** What this expense would save per year (base currency) if cancelled. */
+export function annualSavings(expense: Expense, rates: FxRates, base: Currency): number {
+  return r2(monthlyAmount(expense, rates, base) * 12);
+}
+
+/** Whether an active expense is due for a "still using this?" check-in. */
+export function needsUsageCheck(
+  expense: Expense,
+  intervalDays: number,
+  now: Date = new Date(),
+): boolean {
+  if (!expense.active) return false;
+  const dueAt = expense.lastConfirmedAt + intervalDays * 24 * 60 * 60 * 1000;
+  return now.getTime() >= dueAt;
+}
+
+export interface PriceChangeSummary {
+  changeCount: number;
+  firstAmount: number;
+  firstDate: number;
+  percentChange: number;
+}
+
+/** Summarizes how an expense's price has moved since its earliest recorded amount. */
+export function priceChangeSummary(
+  history: PriceHistoryEntry[],
+  current: { amount: number; currency: Currency },
+): PriceChangeSummary | null {
+  if (history.length === 0) return null;
+  const sorted = [...history].sort((a, b) => a.changedAt - b.changedAt);
+  const first = sorted[0];
+  const sameCurrencyThroughout = sorted.every((h) => h.currency === current.currency);
+  const percentChange =
+    sameCurrencyThroughout && first.amount !== 0
+      ? r2(((current.amount - first.amount) / first.amount) * 100)
+      : 0;
+  return {
+    changeCount: history.length,
+    firstAmount: first.amount,
+    firstDate: first.changedAt,
+    percentChange,
+  };
+}
+
+export interface MonthlyDigest {
+  newExpenses: Expense[];
+  priceChanges: { expense: Expense; summary: PriceChangeSummary }[];
+  pausedCount: number;
+  totalDeltaPct: number | null;
+}
+
+/**
+ * Summarizes what changed since `sinceMs`: new expenses, price changes recorded
+ * in that window, and a rough count of currently-paused expenses. `totalDeltaPct`
+ * compares current monthlyTotal against the total as of `sinceMs` (reconstructed
+ * from priceHistory) — null when there's nothing to compare against.
+ */
+export function buildMonthlyDigest(
+  expenses: Expense[],
+  rates: FxRates,
+  base: Currency,
+  sinceMs: number,
+): MonthlyDigest {
+  const newExpenses = expenses.filter((e) => e.createdAt >= sinceMs);
+
+  const priceChanges = expenses
+    .map((expense) => {
+      const recent = expense.priceHistory.filter((h) => h.changedAt >= sinceMs);
+      if (recent.length === 0) return null;
+      const summary = priceChangeSummary(recent, { amount: expense.amount, currency: expense.currency });
+      return summary ? { expense, summary } : null;
+    })
+    .filter((x): x is { expense: Expense; summary: PriceChangeSummary } => x !== null);
+
+  const pausedCount = expenses.filter((e) => !e.active).length;
+
+  const currentTotal = monthlyTotal(expenses, rates, base);
+  const priorTotal = monthlyTotal(
+    expenses.map((e) => {
+      // The value effective at sinceMs is the earliest history entry recorded
+      // at-or-after sinceMs (each entry holds the amount that was valid right
+      // up until its own changedAt).
+      const valueAtSince = [...e.priceHistory]
+        .filter((h) => h.changedAt >= sinceMs)
+        .sort((a, b) => a.changedAt - b.changedAt)[0];
+      if (!valueAtSince) return e;
+      return { ...e, amount: valueAtSince.amount, currency: valueAtSince.currency };
+    }),
+    rates,
+    base,
+  );
+  const totalDeltaPct =
+    priceChanges.length === 0 || priorTotal === 0
+      ? null
+      : r2(((currentTotal - priorTotal) / priorTotal) * 100);
+
+  return { newExpenses, priceChanges, pausedCount, totalDeltaPct };
 }

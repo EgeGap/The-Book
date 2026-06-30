@@ -1,117 +1,181 @@
 import { useMemo, useState } from "react";
-import { View } from "react-native";
+import { Alert, ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Screen } from "@/components/ui/Screen";
+import { Chip } from "@/components/ui/Chip";
 import { AppText } from "@/components/ui/Text";
-import { Card } from "@/components/ui/Card";
-import { Segmented } from "@/components/ui/Segmented";
+import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatTile } from "@/components/StatTile";
-import { EquityCurve } from "@/components/EquityCurve";
-import { buildEquityCurve, computeDashboardStats } from "@/lib/analytics";
-import { formatMoney, formatPercent, formatR } from "@/lib/utils";
-import { useTradeStore } from "@/store/useTradeStore";
+import { ExpenseCard } from "@/components/ExpenseCard";
+import { UpcomingPayments } from "@/components/UpcomingPayments";
+import { ReviewPrompts } from "@/components/ReviewPrompts";
+import { MonthlyDigest } from "@/components/MonthlyDigest";
+import { CategoryBreakdown } from "@/components/CategoryBreakdown";
+import {
+  activeCount,
+  monthlyTotal,
+  nextBillingDate,
+  totalByCategory,
+  upcomingPayments,
+  yearlyTotal,
+} from "@/lib/expenseAnalytics";
+import { EXPENSE_CATEGORIES, type ExpenseCategory } from "@/lib/constants";
+import { EXPENSE_CATEGORY_LABELS, S } from "@/lib/strings";
+import { exportExpenses } from "@/lib/export";
+import { pickJSONArray, validateExpenses } from "@/lib/importData";
+import { formatAmount } from "@/lib/utils";
+import { useExpenseStore } from "@/store/useExpenseStore";
+import { useSettingsStore } from "@/store/useSettingsStore";
 
-type Period = "7" | "30" | "all";
-
-const PERIOD_OPTIONS = [
-  { label: "7G", value: "7" as const },
-  { label: "30G", value: "30" as const },
-  { label: "Tümü", value: "all" as const },
-];
-
-export default function DashboardScreen() {
+export default function ExpensesScreen() {
   const router = useRouter();
-  const trades = useTradeStore((s) => s.trades);
-  const [period, setPeriod] = useState<Period>("30");
+  const expenses = useExpenseStore((s) => s.expenses);
+  const removeExpense = useExpenseStore((s) => s.removeExpense);
+  const importExpenses = useExpenseStore((s) => s.importExpenses);
+  const base = useSettingsStore((s) => s.baseCurrency);
+  const usdToTry = useSettingsStore((s) => s.usdToTry);
+  const rates = useMemo(() => ({ usdToTry }), [usdToTry]);
+  const [filter, setFilter] = useState<"all" | ExpenseCategory>("all");
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
 
-  const filtered = useMemo(() => {
-    if (period === "all") return trades;
-    const cutoff = Date.now() - Number(period) * 86_400_000;
-    return trades.filter((t) => (t.closedAt ?? t.createdAt) >= cutoff);
-  }, [trades, period]);
+  const monthly = useMemo(() => monthlyTotal(expenses, rates, base), [expenses, rates, base]);
+  const yearly = useMemo(() => yearlyTotal(expenses, rates, base), [expenses, rates, base]);
+  const byCat = useMemo(() => totalByCategory(expenses, rates, base), [expenses, rates, base]);
+  const upcoming = useMemo(() => upcomingPayments(expenses, 7), [expenses]);
 
-  const stats = useMemo(() => computeDashboardStats(filtered), [filtered]);
-  const equity = useMemo(() => buildEquityCurve(filtered), [filtered]);
+  const sorted = useMemo(() => {
+    const list = filter === "all" ? expenses : expenses.filter((e) => e.category === filter);
+    return [...list].sort((a, b) => {
+      if (a.active !== b.active) return a.active ? -1 : 1;
+      if (!a.active) return a.name.localeCompare(b.name);
+      return nextBillingDate(a.billingDay).getTime() - nextBillingDate(b.billingDay).getTime();
+    });
+  }, [expenses, filter]);
 
-  if (trades.length === 0) {
+  const confirmDelete = (id: string, name: string) =>
+    Alert.alert(S.expense.deleteTitle, `${name} — ${S.expense.deleteBody}`, [
+      { text: S.common.cancel, style: "cancel" },
+      { text: S.expense.delete, style: "destructive", onPress: () => removeExpense(id) },
+    ]);
+
+  const doExport = async (fmt: "json" | "csv") => {
+    try {
+      setExporting(true);
+      await exportExpenses(expenses, fmt);
+    } catch {
+      Alert.alert(S.settings.exportFail, S.settings.exportFailBody);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const doImport = async () => {
+    try {
+      setImporting(true);
+      const arr = await pickJSONArray();
+      if (!arr) return; // cancelled
+      const valid = validateExpenses(arr);
+      if (valid.length === 0) {
+        Alert.alert(S.data.importFail, S.data.importNone);
+        return;
+      }
+      const n = await importExpenses(valid);
+      Alert.alert(S.data.importDone, S.data.importDoneCount(n));
+    } catch {
+      Alert.alert(S.data.importFail, S.data.importFailBody);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  if (expenses.length === 0) {
     return (
       <Screen>
         <EmptyState
-          icon="rocket-outline"
-          title="Henüz işlem yok"
-          subtitle="Disiplin ve istatistik oluşturmaya başlamak için ilk işlemini kaydet."
-          ctaLabel="İlk işlemi kaydet"
-          onCta={() => router.push("/trade/new")}
+          icon="receipt-outline"
+          title={S.expense.empty}
+          ctaLabel={S.expense.emptyAdd}
+          onCta={() => router.push("/expense/new")}
         />
+        <View className="pb-8">
+          <Button
+            label={S.expense.import}
+            variant="secondary"
+            icon="download-outline"
+            loading={importing}
+            onPress={doImport}
+          />
+          <AppText variant="muted" className="mt-2 text-center">
+            {S.expense.importHint}
+          </AppText>
+        </View>
       </Screen>
     );
   }
 
-  const streakLabel =
-    stats.streak.type === "none"
-      ? "—"
-      : `${stats.streak.count}${stats.streak.type === "win" ? "W" : "L"}`;
-
   return (
     <Screen scroll>
-      <View className="mb-4 mt-1">
-        <Segmented options={PERIOD_OPTIONS} value={period} onChange={setPeriod} />
-      </View>
-
       <View className="mb-3 flex-row gap-3">
-        <StatTile
-          label="Net R"
-          value={formatR(stats.totalR)}
-          tone={stats.totalR >= 0 ? "win" : "loss"}
-          sub={`${stats.closedCount} kapalı`}
-          icon="analytics-outline"
-        />
-        <StatTile
-          label="Kazanma oranı"
-          value={formatPercent(stats.winRate)}
-          sub={`PF ${stats.profitFactor ?? "∞"}`}
-          icon="trophy-outline"
+        <StatTile label={S.expense.monthlyTotal} value={formatAmount(monthly, base)} tone="accent" icon="repeat-outline" />
+        <StatTile label={S.expense.yearlyTotal} value={formatAmount(yearly, base)} icon="calendar-outline" />
+      </View>
+      <View className="mb-4">
+        <StatTile label={S.expense.activeSubs} value={String(activeCount(expenses))} sub={`${expenses.length} toplam`} icon="card-outline" />
+      </View>
+
+      <View className="mb-4 flex-row items-center gap-2">
+        <AppText variant="label" className="flex-1">
+          {S.common.export}
+        </AppText>
+        <View className="w-24">
+          <Button label="JSON" variant="secondary" icon="code-outline" loading={exporting} onPress={() => doExport("json")} />
+        </View>
+        <View className="w-24">
+          <Button label="CSV" variant="secondary" icon="grid-outline" loading={exporting} onPress={() => doExport("csv")} />
+        </View>
+      </View>
+
+      <View className="mb-4">
+        <Button
+          label={S.expense.import}
+          variant="secondary"
+          icon="download-outline"
+          loading={importing}
+          onPress={doImport}
         />
       </View>
 
-      <View className="mb-3 flex-row gap-3">
-        <StatTile
-          label="Beklenti"
-          value={`${stats.expectancy >= 0 ? "+" : ""}${stats.expectancy.toFixed(2)}R`}
-          tone={stats.expectancy >= 0 ? "win" : "loss"}
-          sub="işlem başına ort. R"
-        />
-        <StatTile
-          label="Net K/Z"
-          value={formatMoney(stats.totalPnl)}
-          tone={stats.totalPnl >= 0 ? "win" : "loss"}
-          sub="hesap birimi"
-        />
+      <MonthlyDigest expenses={expenses} base={base} rates={rates} />
+
+      <ReviewPrompts expenses={expenses} base={base} rates={rates} />
+
+      <UpcomingPayments items={upcoming} base={base} rates={rates} onPress={(id) => router.push(`/expense/${id}`)} />
+
+      <View className="mb-3">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <Chip label={S.common.all} selected={filter === "all"} onPress={() => setFilter("all")} />
+          {EXPENSE_CATEGORIES.map((cat) => (
+            <Chip key={cat} label={EXPENSE_CATEGORY_LABELS[cat]} selected={filter === cat} onPress={() => setFilter(cat)} />
+          ))}
+        </ScrollView>
       </View>
 
-      <View className="mb-4 flex-row gap-3">
-        <StatTile
-          label="Seri"
-          value={streakLabel}
-          tone={stats.streak.type === "win" ? "win" : stats.streak.type === "loss" ? "loss" : "neutral"}
-          sub="mevcut"
+      {sorted.map((e) => (
+        <ExpenseCard
+          key={e.id}
+          expense={e}
+          base={base}
+          rates={rates}
+          onPress={() => router.push(`/expense/${e.id}`)}
+          onDelete={() => confirmDelete(e.id, e.name)}
         />
-        <StatTile
-          label="Açık / Planlı"
-          value={`${stats.openCount} / ${stats.plannedCount}`}
-          sub={`${stats.totalTrades} toplam`}
-          icon="time-outline"
-        />
+      ))}
+
+      <View className="mt-2">
+        <CategoryBreakdown data={byCat} base={base} />
       </View>
-
-      <Card>
-        <EquityCurve points={equity} />
-      </Card>
-
-      <AppText variant="muted" className="mt-4 text-center">
-        En iyi {formatR(stats.bestR)} · En kötü {formatR(stats.worstR)} (bu dönem)
-      </AppText>
     </Screen>
   );
 }

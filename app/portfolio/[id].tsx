@@ -5,44 +5,43 @@ import * as Haptics from "expo-haptics";
 import { Screen } from "@/components/ui/Screen";
 import { AppText } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
-import { ExpenseForm } from "@/components/ExpenseForm";
-import { PriceHistoryCard } from "@/components/PriceHistoryCard";
+import { HoldingForm } from "@/components/HoldingForm";
 import { S } from "@/lib/strings";
-import { useExpenseStore, type ExpenseDraft } from "@/store/useExpenseStore";
+import { usePortfolioStore, type HoldingDraft } from "@/store/usePortfolioStore";
 
-export default function ExpenseDetailScreen() {
+export default function HoldingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const expense = useExpenseStore((s) => s.expenses.find((e) => e.id === id));
-  const saving = useExpenseStore((s) => s.saving);
-  const { saveExpense, togglePause, removeExpense } = useExpenseStore();
+  const holding = usePortfolioStore((s) => s.holdings.find((h) => h.id === id));
+  const saving = usePortfolioStore((s) => s.saving);
+  const { saveHolding, removeHolding } = usePortfolioStore();
 
-  if (!expense) {
+  if (!holding) {
     return (
       <Screen>
         <View className="flex-1 items-center justify-center">
-          <AppText variant="heading">{S.expense.notFound}</AppText>
+          <AppText variant="heading">{S.portfolio.notFound}</AppText>
           <Button label={S.common.back} variant="ghost" onPress={() => router.back()} />
         </View>
       </Screen>
     );
   }
 
-  const handleSubmit = async (draft: ExpenseDraft) => {
-    await saveExpense({ ...expense, ...draft });
+  const handleSubmit = async (draft: HoldingDraft) => {
+    await saveHolding({ ...holding, ...draft });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     router.back();
   };
 
   const confirmDelete = () =>
-    Alert.alert(S.expense.deleteTitle, S.expense.deleteBody, [
+    Alert.alert(S.portfolio.deleteTitle, S.portfolio.deleteBody, [
       { text: S.common.cancel, style: "cancel" },
       {
-        text: S.expense.delete,
+        text: S.portfolio.delete,
         style: "destructive",
         onPress: async () => {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-          await removeExpense(expense.id);
+          await removeHolding(holding.id);
           router.back();
         },
       },
@@ -55,28 +54,13 @@ export default function ExpenseDetailScreen() {
           <Pressable onPress={() => router.back()} hitSlop={12}>
             <Ionicons name="chevron-back" size={26} color="#8E8E93" />
           </Pressable>
-          <AppText variant="heading">{S.expense.editTitle}</AppText>
+          <AppText variant="heading">{S.portfolio.editTitle}</AppText>
           <Pressable onPress={confirmDelete} hitSlop={12}>
             <Ionicons name="trash-outline" size={22} color="#EA3943" />
           </Pressable>
         </View>
 
-        {/* Pause is emphasized over delete — stop counting without cancelling */}
-        <View className="mb-4">
-          <Button
-            label={expense.active ? S.expense.pause : S.expense.resume}
-            variant={expense.active ? "secondary" : "win"}
-            icon={expense.active ? "pause" : "play"}
-            onPress={() => {
-              Haptics.selectionAsync().catch(() => {});
-              togglePause(expense.id);
-            }}
-          />
-        </View>
-
-        <PriceHistoryCard expense={expense} />
-
-        <ExpenseForm initial={expense} submitting={saving} onSubmit={handleSubmit} />
+        <HoldingForm initial={holding} submitting={saving} onSubmit={handleSubmit} />
       </KeyboardAvoidingView>
     </Screen>
   );

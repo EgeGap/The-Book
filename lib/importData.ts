@@ -10,7 +10,7 @@ import {
   type ExpenseCycle,
 } from "./constants";
 import { uid } from "./utils";
-import type { Expense } from "./types";
+import type { Expense, PriceHistoryEntry } from "./types";
 
 /**
  * Import data exported from another device. Picks a JSON file, reads it
@@ -75,6 +75,8 @@ export function validateExpenses(arr: unknown[]): Expense[] {
       notes: asStr(o.notes),
       startedAt: numOr(o.startedAt, now),
       createdAt: numOr(o.createdAt, now),
+      priceHistory: Array.isArray(o.priceHistory) ? (o.priceHistory as PriceHistoryEntry[]) : [],
+      lastConfirmedAt: numOr(o.lastConfirmedAt, numOr(o.createdAt, now)),
     });
   }
   return out;

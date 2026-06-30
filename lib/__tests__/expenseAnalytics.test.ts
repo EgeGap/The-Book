@@ -1,17 +1,21 @@
 import {
   activeCount,
+  annualSavings,
+  buildMonthlyDigest,
   convert,
   monthlyAmount,
   monthlyTotal,
+  needsUsageCheck,
   nextBillingDate,
+  priceChangeSummary,
   totalByCategory,
   upcomingPayments,
   yearlyTotal,
   type FxRates,
 } from "../expenseAnalytics";
-import type { Expense } from "../types";
+import type { Expense, PriceHistoryEntry } from "../types";
 
-const rates: FxRates = { usdToTry: 40, eurToTry: 45 };
+const rates: FxRates = { usdToTry: 40 };
 
 let seq = 0;
 function mkExp(p: Partial<Expense> = {}): Expense {
@@ -29,6 +33,8 @@ function mkExp(p: Partial<Expense> = {}): Expense {
     notes: "",
     startedAt: 0,
     createdAt: seq,
+    priceHistory: [],
+    lastConfirmedAt: 0,
     ...p,
   };
 }
@@ -37,10 +43,9 @@ describe("convert", () => {
   it("pivots through TRY", () => {
     expect(convert(10, "USD", rates, "TRY")).toBe(400);
     expect(convert(400, "TRY", rates, "USD")).toBe(10);
-    expect(convert(10, "EUR", rates, "TRY")).toBe(450);
   });
   it("guards against a zero rate", () => {
-    expect(convert(5, "USD", { usdToTry: 0, eurToTry: 0 }, "TRY")).toBe(5);
+    expect(convert(5, "USD", { usdToTry: 0 }, "TRY")).toBe(5);
   });
 });
 
@@ -111,5 +116,73 @@ describe("upcomingPayments", () => {
     expect(up).toHaveLength(1);
     expect(up[0].expense.name).toBe("Soon");
     expect(up[0].daysUntil).toBe(2);
+  });
+});
+
+describe("annualSavings", () => {
+  it("is the monthly amount times 12", () => {
+    expect(annualSavings(mkExp({ amount: 10 }), rates, "TRY")).toBe(4800);
+  });
+});
+
+describe("needsUsageCheck", () => {
+  const now = new Date(2026, 0, 10);
+  const interval = 90;
+  it("is false for paused expenses", () => {
+    expect(needsUsageCheck(mkExp({ active: false, lastConfirmedAt: 0 }), interval, now)).toBe(false);
+  });
+  it("is false when confirmed recently", () => {
+    const recent = now.getTime() - 10 * 24 * 60 * 60 * 1000;
+    expect(needsUsageCheck(mkExp({ lastConfirmedAt: recent }), interval, now)).toBe(false);
+  });
+  it("is true once the interval has elapsed", () => {
+    const old = now.getTime() - 91 * 24 * 60 * 60 * 1000;
+    expect(needsUsageCheck(mkExp({ lastConfirmedAt: old }), interval, now)).toBe(true);
+  });
+});
+
+describe("priceChangeSummary", () => {
+  it("returns null with no history", () => {
+    expect(priceChangeSummary([], { amount: 10, currency: "USD" })).toBeNull();
+  });
+  it("computes percent change when currency is stable", () => {
+    const history: PriceHistoryEntry[] = [{ amount: 8, currency: "USD", changedAt: 100 }];
+    const summary = priceChangeSummary(history, { amount: 10, currency: "USD" });
+    expect(summary).toEqual({ changeCount: 1, firstAmount: 8, firstDate: 100, percentChange: 25 });
+  });
+  it("returns 0 percent change when currency changed along the way", () => {
+    const history: PriceHistoryEntry[] = [{ amount: 8, currency: "TRY", changedAt: 100 }];
+    const summary = priceChangeSummary(history, { amount: 10, currency: "USD" });
+    expect(summary?.percentChange).toBe(0);
+  });
+});
+
+describe("buildMonthlyDigest", () => {
+  const since = 1000;
+  it("is empty when nothing happened since the window start", () => {
+    const list = [mkExp({ createdAt: 0, amount: 10, currency: "TRY" })];
+    const digest = buildMonthlyDigest(list, rates, "TRY", since);
+    expect(digest.newExpenses).toEqual([]);
+    expect(digest.priceChanges).toEqual([]);
+    expect(digest.totalDeltaPct).toBeNull();
+  });
+  it("detects newly created expenses", () => {
+    const list = [mkExp({ createdAt: 2000, amount: 10, currency: "TRY" })];
+    const digest = buildMonthlyDigest(list, rates, "TRY", since);
+    expect(digest.newExpenses).toHaveLength(1);
+  });
+  it("detects price changes recorded within the window and computes the delta", () => {
+    const list = [
+      mkExp({
+        createdAt: 0,
+        amount: 120,
+        currency: "TRY",
+        priceHistory: [{ amount: 100, currency: "TRY", changedAt: 2000 }],
+      }),
+    ];
+    const digest = buildMonthlyDigest(list, rates, "TRY", since);
+    expect(digest.priceChanges).toHaveLength(1);
+    expect(digest.priceChanges[0].summary.percentChange).toBe(20);
+    expect(digest.totalDeltaPct).toBe(20);
   });
 });

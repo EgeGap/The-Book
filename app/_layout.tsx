@@ -6,9 +6,10 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "nativewind";
+import * as Notifications from "expo-notifications";
 import { deleteSeededExpenses, initDb } from "@/lib/db";
-import { useTradeStore } from "@/store/useTradeStore";
 import { useExpenseStore } from "@/store/useExpenseStore";
+import { usePortfolioStore } from "@/store/usePortfolioStore";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useAuthStore } from "@/store/useAuthStore";
 
@@ -45,10 +46,11 @@ function useAuthRedirect(ready: boolean) {
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
+  const router = useRouter();
   const theme = useSettingsStore((s) => s.theme);
   const settingsHydrated = useSettingsStore((s) => s.hydrated);
-  const hydrateTrades = useTradeStore((s) => s.hydrate);
   const hydrateExpenses = useExpenseStore((s) => s.hydrate);
+  const hydrateHoldings = usePortfolioStore((s) => s.hydrate);
   const { setColorScheme } = useColorScheme();
 
   // One-time data bootstrap: schema -> seed -> load into memory.
@@ -57,13 +59,13 @@ export default function RootLayout() {
       try {
         await initDb();
         await deleteSeededExpenses(); // one-time cleanup of the old demo expenses
-        await hydrateTrades();
         await hydrateExpenses();
+        await hydrateHoldings();
       } finally {
         setReady(true);
       }
     })();
-  }, [hydrateTrades, hydrateExpenses]);
+  }, [hydrateExpenses, hydrateHoldings]);
 
   // Keep the rendered scheme in sync with the saved preference (dark default).
   useEffect(() => {
@@ -71,6 +73,16 @@ export default function RootLayout() {
   }, [theme, settingsHydrated, setColorScheme]);
 
   useAuthRedirect(ready);
+
+  // Tapping a "still using this?" notification opens that expense's detail screen.
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const expenseId = response.notification.request.content.data?.expenseId;
+      if (typeof expenseId === "string") router.push(`/expense/${expenseId}`);
+    });
+    return () => sub.remove();
+  }, [router]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -84,10 +96,10 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false, animation: "slide_from_right" }}>
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="auth/sign-in" />
-            <Stack.Screen name="trade/new" options={{ presentation: "modal" }} />
-            <Stack.Screen name="trade/[id]" />
             <Stack.Screen name="expense/new" options={{ presentation: "modal" }} />
             <Stack.Screen name="expense/[id]" />
+            <Stack.Screen name="portfolio/new" options={{ presentation: "modal" }} />
+            <Stack.Screen name="portfolio/[id]" />
           </Stack>
         )}
       </SafeAreaProvider>

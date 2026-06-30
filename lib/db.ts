@@ -17,13 +17,6 @@ import * as webDb from "./db.web";
 const impl = Platform.OS === "web" ? webDb : sqliteDb;
 
 export const initDb = impl.initDb;
-export const getAllTrades = impl.getAllTrades;
-export const getTrade = impl.getTrade;
-export const upsertTrade = impl.upsertTrade;
-export const deleteTrade = impl.deleteTrade;
-export const countTrades = impl.countTrades;
-export const deleteAllTrades = impl.deleteAllTrades;
-export const bulkInsert = impl.bulkInsert;
 
 export const getAllExpenses = impl.getAllExpenses;
 export const getExpense = impl.getExpense;
@@ -33,6 +26,7 @@ export const countExpenses = impl.countExpenses;
 export const bulkInsertExpenses = impl.bulkInsertExpenses;
 export const deleteSeededExpenses = impl.deleteSeededExpenses;
 
-export const getAllStockAnalyses = impl.getAllStockAnalyses;
-export const upsertStockAnalysis = impl.upsertStockAnalysis;
-export const deleteStockAnalysis = impl.deleteStockAnalysis;
+export const getAllHoldings = impl.getAllHoldings;
+export const getHolding = impl.getHolding;
+export const upsertHolding = impl.upsertHolding;
+export const deleteHolding = impl.deleteHolding;

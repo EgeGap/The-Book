@@ -6,6 +6,7 @@ import { AppText } from "@/components/ui/Text";
 import { Button } from "@/components/ui/Button";
 import { Field, TextField } from "@/components/ui/Field";
 import { useAuthStore } from "@/store/useAuthStore";
+import { S } from "@/lib/strings";
 
 export default function SignInScreen() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -28,13 +29,13 @@ export default function SignInScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View className="mt-12 items-center">
           <View className="h-16 w-16 items-center justify-center rounded-2xl bg-accent">
-            <Ionicons name="trending-up" size={32} color="white" />
+            <Ionicons name="receipt-outline" size={32} color="white" />
           </View>
           <AppText variant="title" className="mt-4">
-            SMC Journal
+            Giderler
           </AppText>
           <AppText variant="muted" className="mt-1 text-center">
-            Her işlemi kaydet. Para kazandıranı bul. Kaybettireni ele.
+            {S.auth.tagline}
           </AppText>
         </View>
 

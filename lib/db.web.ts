@@ -1,83 +1,28 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { Expense, StockAnalysisRecord, Trade } from "./types";
+import type { Expense, StockHolding } from "./types";
 
 /**
  * WEB fallback for the data layer.
  *
  * expo-sqlite's native module isn't available in the browser (it would need a
  * WASM build + COOP/COEP headers). Metro automatically loads THIS file on web
- * and `db.ts` (real SQLite) on iOS/Android — the public API is identical, so no
- * caller needs to know which one is in use.
- *
- * Trades are persisted as a single JSON array in AsyncStorage (localStorage on
- * web), which is plenty for a personal journal.
+ * and `db.sqlite.ts` (real SQLite) on iOS/Android — the public API is
+ * identical, so no caller needs to know which one is in use.
  */
 
-const KEY = "smc/trades-web";
-
-async function readAll(): Promise<Trade[]> {
-  try {
-    const raw = await AsyncStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as Trade[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-async function writeAll(trades: Trade[]): Promise<void> {
-  await AsyncStorage.setItem(KEY, JSON.stringify(trades));
-}
-
-export async function initDb(): Promise<void> {
-  const raw = await AsyncStorage.getItem(KEY);
-  if (raw == null) await writeAll([]);
-}
-
-export async function getAllTrades(): Promise<Trade[]> {
-  const all = await readAll();
-  return all.sort((a, b) => b.createdAt - a.createdAt);
-}
-
-export async function getTrade(id: string): Promise<Trade | null> {
-  const all = await readAll();
-  return all.find((t) => t.id === id) ?? null;
-}
-
-export async function upsertTrade(t: Trade): Promise<void> {
-  const all = await readAll();
-  const idx = all.findIndex((x) => x.id === t.id);
-  if (idx >= 0) all[idx] = t;
-  else all.unshift(t);
-  await writeAll(all);
-}
-
-export async function deleteTrade(id: string): Promise<void> {
-  const all = await readAll();
-  await writeAll(all.filter((t) => t.id !== id));
-}
-
-export async function countTrades(): Promise<number> {
-  return (await readAll()).length;
-}
-
-export async function deleteAllTrades(): Promise<void> {
-  await writeAll([]);
-}
-
-export async function bulkInsert(trades: Trade[]): Promise<void> {
-  const map = new Map((await readAll()).map((t) => [t.id, t]));
-  for (const t of trades) map.set(t.id, t);
-  await writeAll([...map.values()]);
-}
-
-// ── Expenses ────────────────────────────────────────────────────────────────
-
 const EXP_KEY = "smc/expenses-web";
+const HOLD_KEY = "smc/holdings-web";
 
 async function readExpenses(): Promise<Expense[]> {
   try {
     const raw = await AsyncStorage.getItem(EXP_KEY);
-    return raw ? (JSON.parse(raw) as Expense[]) : [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Expense[];
+    return parsed.map((e) => ({
+      ...e,
+      priceHistory: e.priceHistory ?? [],
+      lastConfirmedAt: e.lastConfirmedAt ?? e.createdAt,
+    }));
   } catch {
     return [];
   }
@@ -85,6 +30,11 @@ async function readExpenses(): Promise<Expense[]> {
 
 async function writeExpenses(list: Expense[]): Promise<void> {
   await AsyncStorage.setItem(EXP_KEY, JSON.stringify(list));
+}
+
+export async function initDb(): Promise<void> {
+  const raw = await AsyncStorage.getItem(EXP_KEY);
+  if (raw == null) await writeExpenses([]);
 }
 
 export async function getAllExpenses(): Promise<Expense[]> {
@@ -123,36 +73,39 @@ export async function deleteSeededExpenses(): Promise<void> {
   await writeExpenses((await readExpenses()).filter((e) => !e.id.startsWith("expseed_")));
 }
 
-// ── Stock analysis cache ──────────────────────────────────────────────────────
+// ── Holdings (portfolio) ───────────────────────────────────────────────────
 
-const STOCK_KEY = "smc/stock-analyses";
-
-async function readStockAnalyses(): Promise<StockAnalysisRecord[]> {
+async function readHoldings(): Promise<StockHolding[]> {
   try {
-    const raw = await AsyncStorage.getItem(STOCK_KEY);
-    return raw ? (JSON.parse(raw) as StockAnalysisRecord[]) : [];
+    const raw = await AsyncStorage.getItem(HOLD_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as StockHolding[];
   } catch {
     return [];
   }
 }
 
-async function writeStockAnalyses(list: StockAnalysisRecord[]): Promise<void> {
-  await AsyncStorage.setItem(STOCK_KEY, JSON.stringify(list));
+async function writeHoldings(list: StockHolding[]): Promise<void> {
+  await AsyncStorage.setItem(HOLD_KEY, JSON.stringify(list));
 }
 
-export async function getAllStockAnalyses(): Promise<StockAnalysisRecord[]> {
-  const all = await readStockAnalyses();
-  return all.sort((a, b) => b.updatedAt - a.updatedAt);
+export async function getAllHoldings(): Promise<StockHolding[]> {
+  const all = await readHoldings();
+  return all.sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export async function upsertStockAnalysis(record: StockAnalysisRecord): Promise<void> {
-  const all = await readStockAnalyses();
-  const idx = all.findIndex((x) => x.ticker === record.ticker);
-  if (idx >= 0) all[idx] = record;
-  else all.unshift(record);
-  await writeStockAnalyses(all);
+export async function getHolding(id: string): Promise<StockHolding | null> {
+  return (await readHoldings()).find((h) => h.id === id) ?? null;
 }
 
-export async function deleteStockAnalysis(ticker: string): Promise<void> {
-  await writeStockAnalyses((await readStockAnalyses()).filter((x) => x.ticker !== ticker));
+export async function upsertHolding(h: StockHolding): Promise<void> {
+  const all = await readHoldings();
+  const idx = all.findIndex((x) => x.id === h.id);
+  if (idx >= 0) all[idx] = h;
+  else all.unshift(h);
+  await writeHoldings(all);
+}
+
+export async function deleteHolding(id: string): Promise<void> {
+  await writeHoldings((await readHoldings()).filter((h) => h.id !== id));
 }

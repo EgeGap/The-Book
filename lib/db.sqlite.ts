@@ -1,19 +1,6 @@
 import * as SQLite from "expo-sqlite";
-import type { Expense, StockAnalysisRecord, Trade } from "./types";
-import type {
-  Confluence,
-  Currency,
-  Direction,
-  ExpenseCategory,
-  ExpenseCycle,
-  HtfBias,
-  MistakeTag,
-  Session,
-  SetupType,
-  TradeResult,
-  TradeStatus,
-  Zone,
-} from "./constants";
+import type { Expense, PriceHistoryEntry, StockHolding } from "./types";
+import type { Currency, ExpenseCategory, ExpenseCycle, StockMarket } from "./constants";
 
 const DB_NAME = "smc_journal.db";
 
@@ -30,35 +17,6 @@ export async function initDb(): Promise<void> {
   const db = await getDb();
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
-    CREATE TABLE IF NOT EXISTS trades (
-      id TEXT PRIMARY KEY NOT NULL,
-      symbol TEXT NOT NULL,
-      direction TEXT NOT NULL,
-      status TEXT NOT NULL,
-      session TEXT NOT NULL,
-      htfBias TEXT NOT NULL,
-      biasTimeframe TEXT NOT NULL,
-      entryTimeframe TEXT NOT NULL,
-      setupType TEXT NOT NULL,
-      confluences TEXT NOT NULL,
-      zone TEXT NOT NULL,
-      entry REAL NOT NULL,
-      stopLoss REAL NOT NULL,
-      takeProfit REAL NOT NULL,
-      riskPercent REAL NOT NULL,
-      plannedRR REAL NOT NULL,
-      realizedRR REAL,
-      pnl REAL,
-      result TEXT,
-      exitPrice REAL,
-      entryReason TEXT NOT NULL,
-      mistakes TEXT NOT NULL,
-      notes TEXT NOT NULL,
-      screenshots TEXT NOT NULL,
-      createdAt INTEGER NOT NULL,
-      closedAt INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_trades_createdAt ON trades (createdAt DESC);
     CREATE TABLE IF NOT EXISTS expenses (
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL,
@@ -73,171 +31,31 @@ export async function initDb(): Promise<void> {
       startedAt INTEGER NOT NULL,
       createdAt INTEGER NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS stock_analyses (
-      ticker TEXT PRIMARY KEY NOT NULL,
-      reportJson TEXT NOT NULL,
-      updatedAt INTEGER NOT NULL
+    CREATE TABLE IF NOT EXISTS holdings (
+      id TEXT PRIMARY KEY NOT NULL,
+      symbol TEXT NOT NULL,
+      market TEXT NOT NULL,
+      quantity REAL NOT NULL,
+      costBasis REAL NOT NULL,
+      costCurrency TEXT NOT NULL,
+      purchasedAt INTEGER NOT NULL,
+      notes TEXT NOT NULL,
+      lastPrice REAL,
+      lastPriceCurrency TEXT,
+      lastPriceAt INTEGER,
+      createdAt INTEGER NOT NULL
     );
   `);
-}
-
-/** Shape of a raw SQLite row before JSON columns are parsed. */
-interface TradeRow {
-  id: string;
-  symbol: string;
-  direction: string;
-  status: string;
-  session: string;
-  htfBias: string;
-  biasTimeframe: string;
-  entryTimeframe: string;
-  setupType: string;
-  confluences: string;
-  zone: string;
-  entry: number;
-  stopLoss: number;
-  takeProfit: number;
-  riskPercent: number;
-  plannedRR: number;
-  realizedRR: number | null;
-  pnl: number | null;
-  result: string | null;
-  exitPrice: number | null;
-  entryReason: string;
-  mistakes: string;
-  notes: string;
-  screenshots: string;
-  createdAt: number;
-  closedAt: number | null;
-}
-
-function parseJsonArray<T>(raw: string): T[] {
-  try {
-    const v = JSON.parse(raw);
-    return Array.isArray(v) ? (v as T[]) : [];
-  } catch {
-    return [];
+  for (const stmt of [
+    `ALTER TABLE expenses ADD COLUMN priceHistory TEXT NOT NULL DEFAULT '[]';`,
+    `ALTER TABLE expenses ADD COLUMN lastConfirmedAt INTEGER;`,
+  ]) {
+    try {
+      await db.execAsync(stmt);
+    } catch {
+      // column already exists — fine, this is our only migration mechanism
+    }
   }
-}
-
-function rowToTrade(r: TradeRow): Trade {
-  return {
-    id: r.id,
-    symbol: r.symbol,
-    direction: r.direction as Direction,
-    status: r.status as TradeStatus,
-    session: r.session as Session,
-    htfBias: r.htfBias as HtfBias,
-    biasTimeframe: r.biasTimeframe,
-    entryTimeframe: r.entryTimeframe,
-    setupType: r.setupType as SetupType,
-    confluences: parseJsonArray<Confluence>(r.confluences),
-    zone: r.zone as Zone,
-    entry: r.entry,
-    stopLoss: r.stopLoss,
-    takeProfit: r.takeProfit,
-    riskPercent: r.riskPercent,
-    plannedRR: r.plannedRR,
-    realizedRR: r.realizedRR,
-    pnl: r.pnl,
-    result: r.result as TradeResult | null,
-    exitPrice: r.exitPrice,
-    entryReason: r.entryReason,
-    mistakes: parseJsonArray<MistakeTag>(r.mistakes),
-    notes: r.notes,
-    screenshots: parseJsonArray<string>(r.screenshots),
-    createdAt: r.createdAt,
-    closedAt: r.closedAt,
-  };
-}
-
-/** Ordered newest-first for list/feed rendering. */
-const COLUMNS = `id, symbol, direction, status, session, htfBias, biasTimeframe,
-  entryTimeframe, setupType, confluences, zone, entry, stopLoss, takeProfit,
-  riskPercent, plannedRR, realizedRR, pnl, result, exitPrice, entryReason,
-  mistakes, notes, screenshots, createdAt, closedAt`;
-
-export async function getAllTrades(): Promise<Trade[]> {
-  const db = await getDb();
-  const rows = await db.getAllAsync<TradeRow>(
-    `SELECT ${COLUMNS} FROM trades ORDER BY createdAt DESC`,
-  );
-  return rows.map(rowToTrade);
-}
-
-export async function getTrade(id: string): Promise<Trade | null> {
-  const db = await getDb();
-  const row = await db.getFirstAsync<TradeRow>(
-    `SELECT ${COLUMNS} FROM trades WHERE id = ?`,
-    [id],
-  );
-  return row ? rowToTrade(row) : null;
-}
-
-function tradeParams(t: Trade): (string | number | null)[] {
-  return [
-    t.id,
-    t.symbol,
-    t.direction,
-    t.status,
-    t.session,
-    t.htfBias,
-    t.biasTimeframe,
-    t.entryTimeframe,
-    t.setupType,
-    JSON.stringify(t.confluences),
-    t.zone,
-    t.entry,
-    t.stopLoss,
-    t.takeProfit,
-    t.riskPercent,
-    t.plannedRR,
-    t.realizedRR,
-    t.pnl,
-    t.result,
-    t.exitPrice,
-    t.entryReason,
-    JSON.stringify(t.mistakes),
-    t.notes,
-    JSON.stringify(t.screenshots),
-    t.createdAt,
-    t.closedAt,
-  ];
-}
-
-export async function upsertTrade(t: Trade): Promise<void> {
-  const db = await getDb();
-  await db.runAsync(
-    `INSERT OR REPLACE INTO trades (${COLUMNS})
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    tradeParams(t),
-  );
-}
-
-export async function deleteTrade(id: string): Promise<void> {
-  const db = await getDb();
-  await db.runAsync(`DELETE FROM trades WHERE id = ?`, [id]);
-}
-
-export async function countTrades(): Promise<number> {
-  const db = await getDb();
-  const row = await db.getFirstAsync<{ c: number }>(
-    `SELECT COUNT(*) as c FROM trades`,
-  );
-  return row?.c ?? 0;
-}
-
-export async function deleteAllTrades(): Promise<void> {
-  const db = await getDb();
-  await db.runAsync(`DELETE FROM trades`);
-}
-
-/** Insert many in one transaction (used by the seeder). */
-export async function bulkInsert(trades: Trade[]): Promise<void> {
-  const db = await getDb();
-  await db.withTransactionAsync(async () => {
-    for (const t of trades) await upsertTrade(t);
-  });
 }
 
 // ── Expenses ────────────────────────────────────────────────────────────────
@@ -255,12 +73,20 @@ interface ExpenseRow {
   notes: string;
   startedAt: number;
   createdAt: number;
+  priceHistory: string;
+  lastConfirmedAt: number | null;
 }
 
 const EXP_COLUMNS = `id, name, amount, currency, category, cycle, billingDay,
-  paymentMethod, active, notes, startedAt, createdAt`;
+  paymentMethod, active, notes, startedAt, createdAt, priceHistory, lastConfirmedAt`;
 
 function rowToExpense(r: ExpenseRow): Expense {
+  let priceHistory: PriceHistoryEntry[] = [];
+  try {
+    priceHistory = JSON.parse(r.priceHistory) as PriceHistoryEntry[];
+  } catch {
+    priceHistory = [];
+  }
   return {
     id: r.id,
     name: r.name,
@@ -274,6 +100,8 @@ function rowToExpense(r: ExpenseRow): Expense {
     notes: r.notes,
     startedAt: r.startedAt,
     createdAt: r.createdAt,
+    priceHistory,
+    lastConfirmedAt: r.lastConfirmedAt ?? r.createdAt,
   };
 }
 
@@ -291,6 +119,8 @@ function expenseParams(e: Expense): (string | number)[] {
     e.notes,
     e.startedAt,
     e.createdAt,
+    JSON.stringify(e.priceHistory),
+    e.lastConfirmedAt,
   ];
 }
 
@@ -315,7 +145,7 @@ export async function upsertExpense(e: Expense): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT OR REPLACE INTO expenses (${EXP_COLUMNS})
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     expenseParams(e),
   );
 }
@@ -346,35 +176,87 @@ export async function deleteSeededExpenses(): Promise<void> {
   await db.runAsync(`DELETE FROM expenses WHERE id LIKE 'expseed\\_%' ESCAPE '\\'`);
 }
 
-// ── Stock analysis cache ──────────────────────────────────────────────────────
+// ── Holdings (portfolio) ───────────────────────────────────────────────────
 
-interface StockAnalysisRow {
-  ticker: string;
-  reportJson: string;
-  updatedAt: number;
+interface HoldingRow {
+  id: string;
+  symbol: string;
+  market: string;
+  quantity: number;
+  costBasis: number;
+  costCurrency: string;
+  purchasedAt: number;
+  notes: string;
+  lastPrice: number | null;
+  lastPriceCurrency: string | null;
+  lastPriceAt: number | null;
+  createdAt: number;
 }
 
-function rowToStockAnalysis(r: StockAnalysisRow): StockAnalysisRecord {
-  return { ticker: r.ticker, report: JSON.parse(r.reportJson), updatedAt: r.updatedAt };
+const HOLD_COLUMNS = `id, symbol, market, quantity, costBasis, costCurrency,
+  purchasedAt, notes, lastPrice, lastPriceCurrency, lastPriceAt, createdAt`;
+
+function rowToHolding(r: HoldingRow): StockHolding {
+  return {
+    id: r.id,
+    symbol: r.symbol,
+    market: r.market as StockMarket,
+    quantity: r.quantity,
+    costBasis: r.costBasis,
+    costCurrency: r.costCurrency as Currency,
+    purchasedAt: r.purchasedAt,
+    notes: r.notes,
+    lastPrice: r.lastPrice,
+    lastPriceCurrency: r.lastPriceCurrency as Currency | null,
+    lastPriceAt: r.lastPriceAt,
+    createdAt: r.createdAt,
+  };
 }
 
-export async function getAllStockAnalyses(): Promise<StockAnalysisRecord[]> {
+function holdingParams(h: StockHolding): (string | number | null)[] {
+  return [
+    h.id,
+    h.symbol,
+    h.market,
+    h.quantity,
+    h.costBasis,
+    h.costCurrency,
+    h.purchasedAt,
+    h.notes,
+    h.lastPrice,
+    h.lastPriceCurrency,
+    h.lastPriceAt,
+    h.createdAt,
+  ];
+}
+
+export async function getAllHoldings(): Promise<StockHolding[]> {
   const db = await getDb();
-  const rows = await db.getAllAsync<StockAnalysisRow>(
-    `SELECT ticker, reportJson, updatedAt FROM stock_analyses ORDER BY updatedAt DESC`,
+  const rows = await db.getAllAsync<HoldingRow>(
+    `SELECT ${HOLD_COLUMNS} FROM holdings ORDER BY createdAt DESC`,
   );
-  return rows.map(rowToStockAnalysis);
+  return rows.map(rowToHolding);
 }
 
-export async function upsertStockAnalysis(record: StockAnalysisRecord): Promise<void> {
+export async function getHolding(id: string): Promise<StockHolding | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<HoldingRow>(
+    `SELECT ${HOLD_COLUMNS} FROM holdings WHERE id = ?`,
+    [id],
+  );
+  return row ? rowToHolding(row) : null;
+}
+
+export async function upsertHolding(h: StockHolding): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    `INSERT OR REPLACE INTO stock_analyses (ticker, reportJson, updatedAt) VALUES (?,?,?)`,
-    [record.ticker, JSON.stringify(record.report), record.updatedAt],
+    `INSERT OR REPLACE INTO holdings (${HOLD_COLUMNS})
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    holdingParams(h),
   );
 }
 
-export async function deleteStockAnalysis(ticker: string): Promise<void> {
+export async function deleteHolding(id: string): Promise<void> {
   const db = await getDb();
-  await db.runAsync(`DELETE FROM stock_analyses WHERE ticker = ?`, [ticker]);
+  await db.runAsync(`DELETE FROM holdings WHERE id = ?`, [id]);
 }

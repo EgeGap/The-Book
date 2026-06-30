@@ -1,8 +1,9 @@
 /**
  * OPTIONAL cloud sync — disabled by default.
  * ---------------------------------------------------------------------------
- * This app is LOCAL-FIRST: trades live in expo-sqlite and settings/auth live in
- * AsyncStorage. Everything works fully offline with no account and no network.
+ * This app is LOCAL-FIRST: expenses live in expo-sqlite and settings/auth live
+ * in AsyncStorage. Everything works fully offline with no account and no
+ * network.
  *
  * Firebase is intentionally NOT imported here so the project installs and runs
  * with zero external setup. If you later want multi-device sync, follow the
@@ -16,7 +17,7 @@
  *    and Storage.
  * 3. Paste the web config into FIREBASE_CONFIG below and set ENABLE_FIREBASE = true.
  * 4. Uncomment the implementation block at the bottom of this file and wire the
- *    sync calls into store/useTradeStore.ts (e.g. mirror upsertTrade/deleteTrade).
+ *    sync calls into store/useExpenseStore.ts (e.g. mirror upsertExpense/deleteExpense).
  * 5. For Firestore offline persistence on RN, initialize with
  *      initializeFirestore(app, { localCache: persistentLocalCache() })
  *    so the app keeps working without a connection and syncs when back online.
@@ -51,17 +52,17 @@ import {
   setDoc,
   deleteDoc,
 } from "firebase/firestore";
-import type { Trade } from "./types";
+import type { Expense } from "./types";
 
 const app = initializeApp(FIREBASE_CONFIG);
 export const db = initializeFirestore(app, { localCache: persistentLocalCache() });
 
-const tradesCol = (uid: string) => collection(db, "users", uid, "trades");
+const expensesCol = (uid: string) => collection(db, "users", uid, "expenses");
 
-export async function syncUpsertTrade(uid: string, t: Trade) {
-  await setDoc(doc(tradesCol(uid), t.id), t);
+export async function syncUpsertExpense(uid: string, e: Expense) {
+  await setDoc(doc(expensesCol(uid), e.id), e);
 }
-export async function syncDeleteTrade(uid: string, id: string) {
-  await deleteDoc(doc(tradesCol(uid), id));
+export async function syncDeleteExpense(uid: string, id: string) {
+  await deleteDoc(doc(expensesCol(uid), id));
 }
 */
