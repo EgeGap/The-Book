@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  bulkInsertHoldings,
   deleteHolding as dbDelete,
   getAllHoldings,
   upsertHolding,
@@ -24,6 +25,7 @@ interface PortfolioState {
   addHolding: (draft: HoldingDraft) => Promise<StockHolding | null>;
   saveHolding: (holding: StockHolding) => Promise<void>;
   removeHolding: (id: string) => Promise<void>;
+  importHoldings: (list: StockHolding[]) => Promise<number>;
   refreshPrices: () => Promise<number>;
 }
 
@@ -75,6 +77,14 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
   removeHolding: async (id) => {
     await dbDelete(id);
     set((st) => ({ holdings: st.holdings.filter((h) => h.id !== id) }));
+  },
+
+  importHoldings: async (list) => {
+    if (list.length === 0) return 0;
+    await bulkInsertHoldings(list);
+    const all = await getAllHoldings();
+    set({ holdings: all });
+    return list.length;
   },
 
   refreshPrices: async () => {

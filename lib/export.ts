@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { format } from "date-fns";
-import type { Expense } from "./types";
+import type { Expense, StockHolding } from "./types";
 
 function csvCell(value: unknown): string {
   if (value == null) return "";
@@ -62,4 +62,31 @@ export async function exportExpenses(expenses: Expense[], fmt: "json" | "csv"): 
   const stamp = format(new Date(), "yyyyMMdd-HHmm");
   const content = fmt === "json" ? expensesToJSON(expenses) : expensesToCSV(expenses);
   await saveAndShare(`smc-giderler-${stamp}.${fmt}`, content, mimeFor(fmt));
+}
+
+// ── Portfolio ───────────────────────────────────────────────────────────────
+
+export function holdingsToJSON(holdings: StockHolding[]): string {
+  return JSON.stringify(holdings, null, 2);
+}
+
+const HOLDING_CSV_COLUMNS: (keyof StockHolding)[] = [
+  "id", "symbol", "market", "quantity", "costBasis", "costCurrency",
+  "purchasedAt", "notes", "lastPrice", "lastPriceCurrency", "lastPriceAt",
+  "createdAt",
+];
+
+export function holdingsToCSV(holdings: StockHolding[]): string {
+  const header = HOLDING_CSV_COLUMNS.join(",");
+  const rows = holdings.map((h) =>
+    HOLDING_CSV_COLUMNS.map((col) => csvCell(h[col])).join(","),
+  );
+  return [header, ...rows].join("\n");
+}
+
+/** Export all portfolio holdings (web download / native share sheet). */
+export async function exportHoldings(holdings: StockHolding[], fmt: "json" | "csv"): Promise<void> {
+  const stamp = format(new Date(), "yyyyMMdd-HHmm");
+  const content = fmt === "json" ? holdingsToJSON(holdings) : holdingsToCSV(holdings);
+  await saveAndShare(`smc-portfoy-${stamp}.${fmt}`, content, mimeFor(fmt));
 }

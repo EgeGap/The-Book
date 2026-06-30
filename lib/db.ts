@@ -29,4 +29,5 @@ export const deleteSeededExpenses = impl.deleteSeededExpenses;
 export const getAllHoldings = impl.getAllHoldings;
 export const getHolding = impl.getHolding;
 export const upsertHolding = impl.upsertHolding;
+export const bulkInsertHoldings = impl.bulkInsertHoldings;
 export const deleteHolding = impl.deleteHolding;

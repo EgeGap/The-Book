@@ -256,6 +256,13 @@ export async function upsertHolding(h: StockHolding): Promise<void> {
   );
 }
 
+export async function bulkInsertHoldings(holdings: StockHolding[]): Promise<void> {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    for (const h of holdings) await upsertHolding(h);
+  });
+}
+
 export async function deleteHolding(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync(`DELETE FROM holdings WHERE id = ?`, [id]);

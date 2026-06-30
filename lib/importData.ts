@@ -5,12 +5,14 @@ import {
   CURRENCIES,
   EXPENSE_CATEGORIES,
   EXPENSE_CYCLES,
+  STOCK_MARKETS,
   type Currency,
   type ExpenseCategory,
   type ExpenseCycle,
+  type StockMarket,
 } from "./constants";
 import { uid } from "./utils";
-import type { Expense, PriceHistoryEntry } from "./types";
+import type { Expense, PriceHistoryEntry, StockHolding } from "./types";
 
 /**
  * Import data exported from another device. Picks a JSON file, reads it
@@ -77,6 +79,38 @@ export function validateExpenses(arr: unknown[]): Expense[] {
       createdAt: numOr(o.createdAt, now),
       priceHistory: Array.isArray(o.priceHistory) ? (o.priceHistory as PriceHistoryEntry[]) : [],
       lastConfirmedAt: numOr(o.lastConfirmedAt, numOr(o.createdAt, now)),
+    });
+  }
+  return out;
+}
+
+/** Validate + normalize raw objects into portfolio holdings. */
+export function validateHoldings(arr: unknown[]): StockHolding[] {
+  const out: StockHolding[] = [];
+  const now = Date.now();
+  for (const item of arr) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const symbol = asStr(o.symbol).trim().toUpperCase();
+    const quantity = Number(o.quantity);
+    const costBasis = Number(o.costBasis);
+    if (!symbol || !Number.isFinite(quantity) || !Number.isFinite(costBasis)) continue;
+
+    out.push({
+      id: asStr(o.id) || uid("hold"),
+      symbol,
+      market: inEnum<StockMarket>(STOCK_MARKETS, o.market, "BIST"),
+      quantity,
+      costBasis,
+      costCurrency: inEnum<Currency>(CURRENCIES, o.costCurrency, "TRY"),
+      purchasedAt: numOr(o.purchasedAt, now),
+      notes: asStr(o.notes),
+      lastPrice: typeof o.lastPrice === "number" && Number.isFinite(o.lastPrice) ? o.lastPrice : null,
+      lastPriceCurrency:
+        o.lastPriceCurrency == null ? null : inEnum<Currency>(CURRENCIES, o.lastPriceCurrency, "TRY"),
+      lastPriceAt:
+        typeof o.lastPriceAt === "number" && Number.isFinite(o.lastPriceAt) ? o.lastPriceAt : null,
+      createdAt: numOr(o.createdAt, now),
     });
   }
   return out;

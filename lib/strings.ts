@@ -180,6 +180,11 @@ export const S = {
     refreshFailTitle: "Fiyat alınamadı",
     refreshFailBody:
       "Yahoo Finance veya web proxy yanıt vermedi. Biraz sonra tekrar dene ya da mobilde yenile.",
+    import: "İçe Aktar (JSON)",
+    importHint: "Başka cihazdan dışa aktardığın portföy JSON'unu yükle.",
+    importDoneCount: (n: number) => `${n} portföy kaydı eklendi/güncellendi.`,
+    importNone: "Dosyada geçerli portföy kaydı bulunamadı.",
+    exportEmpty: "Önce portföye bir kayıt ekle.",
     modeAll: "Tümü",
     modeDaily: "Günlük",
     noteAll: "Aldığın fiyata (maliyetine) göre toplam kâr/zarar.",

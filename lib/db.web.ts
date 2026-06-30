@@ -106,6 +106,12 @@ export async function upsertHolding(h: StockHolding): Promise<void> {
   await writeHoldings(all);
 }
 
+export async function bulkInsertHoldings(holdings: StockHolding[]): Promise<void> {
+  const map = new Map((await readHoldings()).map((h) => [h.id, h]));
+  for (const h of holdings) map.set(h.id, h);
+  await writeHoldings([...map.values()]);
+}
+
 export async function deleteHolding(id: string): Promise<void> {
   await writeHoldings((await readHoldings()).filter((h) => h.id !== id));
 }

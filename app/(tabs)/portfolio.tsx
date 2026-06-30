@@ -12,6 +12,8 @@ import { ProfitCard, type ProfitMode } from "@/components/ProfitCard";
 import { HoldingCard } from "@/components/HoldingCard";
 import { portfolioSummary } from "@/lib/portfolioAnalytics";
 import { fetchAllDailyQuotes } from "@/lib/stockPrices";
+import { exportHoldings } from "@/lib/export";
+import { pickJSONArray, validateHoldings } from "@/lib/importData";
 import type { DailyQuote } from "@/lib/types";
 import { S } from "@/lib/strings";
 import { formatAmount } from "@/lib/utils";
@@ -22,6 +24,7 @@ export default function PortfolioScreen() {
   const router = useRouter();
   const holdings = usePortfolioStore((s) => s.holdings);
   const removeHolding = usePortfolioStore((s) => s.removeHolding);
+  const importHoldings = usePortfolioStore((s) => s.importHoldings);
   const refreshPrices = usePortfolioStore((s) => s.refreshPrices);
   const refreshing = usePortfolioStore((s) => s.refreshing);
   const base = useSettingsStore((s) => s.baseCurrency);
@@ -29,6 +32,8 @@ export default function PortfolioScreen() {
   const rates = useMemo(() => ({ usdToTry }), [usdToTry]);
   const [summaryCurrency, setSummaryCurrency] = useState(base);
   const [hideBalance, setHideBalance] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   // Shared with both the profit card and every holding card below, so switching
   // Tümü/Günlük once re-fetches/re-renders everything together instead of each
@@ -62,6 +67,40 @@ export default function PortfolioScreen() {
     Alert.alert(S.portfolio.refreshFailTitle, S.portfolio.refreshFailBody);
   };
 
+  const doExport = async (fmt: "json" | "csv") => {
+    if (holdings.length === 0) {
+      Alert.alert(S.settings.nothingExport, S.portfolio.exportEmpty);
+      return;
+    }
+    try {
+      setExporting(true);
+      await exportHoldings(holdings, fmt);
+    } catch {
+      Alert.alert(S.settings.exportFail, S.settings.exportFailBody);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const doImport = async () => {
+    try {
+      setImporting(true);
+      const raw = await pickJSONArray();
+      if (!raw) return;
+      const valid = validateHoldings(raw);
+      if (valid.length === 0) {
+        Alert.alert(S.data.importFail, S.portfolio.importNone);
+        return;
+      }
+      const n = await importHoldings(valid);
+      Alert.alert(S.data.importDone, S.portfolio.importDoneCount(n));
+    } catch {
+      Alert.alert(S.data.importFail, S.data.importFailBody);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const confirmDelete = (id: string, symbol: string) =>
     Alert.alert(S.portfolio.deleteTitle, `${symbol} — ${S.portfolio.deleteBody}`, [
       { text: S.common.cancel, style: "cancel" },
@@ -77,6 +116,18 @@ export default function PortfolioScreen() {
           ctaLabel={S.portfolio.emptyAdd}
           onCta={() => router.push("/portfolio/new")}
         />
+        <View className="-mt-12 px-8 pb-8">
+          <Button
+            label={S.portfolio.import}
+            variant="secondary"
+            icon="cloud-upload-outline"
+            loading={importing}
+            onPress={doImport}
+          />
+          <AppText variant="muted" className="mt-2 text-center">
+            {S.portfolio.importHint}
+          </AppText>
+        </View>
       </Screen>
     );
   }
@@ -130,6 +181,32 @@ export default function PortfolioScreen() {
           loading={refreshing}
           onPress={handleRefreshPrices}
         />
+      </View>
+
+      <View className="mb-4 rounded-2xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
+        <AppText variant="label" className="mb-2">
+          {S.common.export}
+        </AppText>
+        <View className="flex-row gap-3">
+          <View className="flex-1">
+            <Button label="JSON" variant="secondary" icon="code-outline" loading={exporting} onPress={() => doExport("json")} />
+          </View>
+          <View className="flex-1">
+            <Button label="CSV" variant="secondary" icon="grid-outline" loading={exporting} onPress={() => doExport("csv")} />
+          </View>
+        </View>
+        <View className="mt-3">
+          <Button
+            label={S.portfolio.import}
+            variant="ghost"
+            icon="cloud-upload-outline"
+            loading={importing}
+            onPress={doImport}
+          />
+        </View>
+        <AppText variant="muted" className="mt-2">
+          {S.portfolio.importHint}
+        </AppText>
       </View>
 
       {holdings.map((h) => (
