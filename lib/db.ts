@@ -31,3 +31,9 @@ export const getHolding = impl.getHolding;
 export const upsertHolding = impl.upsertHolding;
 export const bulkInsertHoldings = impl.bulkInsertHoldings;
 export const deleteHolding = impl.deleteHolding;
+export const insertTransaction = impl.insertTransaction;
+export const getAllTransactions = impl.getAllTransactions;
+
+export const insertPriceSnapshot = impl.insertPriceSnapshot;
+export const getDelayedPrice = impl.getDelayedPrice;
+export const prunePriceSnapshots = impl.prunePriceSnapshots;

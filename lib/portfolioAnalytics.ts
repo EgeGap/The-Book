@@ -1,5 +1,5 @@
-import type { Currency } from "./constants";
-import type { DailyQuote, StockHolding } from "./types";
+import type { Currency, StockMarket } from "./constants";
+import type { DailyQuote, HoldingTransaction, StockHolding } from "./types";
 import { convert, type FxRates } from "./expenseAnalytics";
 
 /**
@@ -100,6 +100,50 @@ export function dailyChange(
   const amount = r2(curValue - prevValue);
   const percent = prevValue === 0 ? null : r2((amount / prevValue) * 100);
   return { amount, percent };
+}
+
+const PIE_COLORS = ["#7C5CFC", "#34C759", "#FF9500", "#EA3943", "#00B4D8", "#FF2D55", "#5AC8FA", "#FFCC00"];
+
+export interface HoldingWeight {
+  id: string;
+  symbol: string;
+  market: StockMarket;
+  value: number;
+  percent: number;
+  color: string;
+}
+
+/** Portfolio distribution: each holding's share of total portfolio value. */
+export function holdingWeights(
+  holdings: StockHolding[],
+  rates: FxRates,
+  base: Currency,
+): HoldingWeight[] {
+  const items = holdings.map((h, i) => {
+    const value =
+      h.lastPrice != null && h.lastPriceCurrency != null
+        ? convert(h.quantity * h.lastPrice, h.lastPriceCurrency, rates, base)
+        : convert(holdingCostTotal(h), h.costCurrency, rates, base);
+    return { id: h.id, symbol: h.symbol, market: h.market, value, color: PIE_COLORS[i % PIE_COLORS.length] };
+  });
+  const total = items.reduce((s, x) => s + x.value, 0);
+  if (total === 0) return [];
+  return items.map((x) => ({ ...x, percent: r2((x.value / total) * 100) }));
+}
+
+/** Sum of (sellPrice - costBasis) × qty across all sell transactions with costBasisAtSale. */
+export function realizedPnl(
+  transactions: HoldingTransaction[],
+  rates: FxRates,
+  base: Currency,
+): number {
+  let total = 0;
+  for (const tx of transactions) {
+    if (tx.type !== "sell" || tx.costBasisAtSale == null) continue;
+    const gain = (tx.pricePerUnit - tx.costBasisAtSale) * tx.quantity;
+    total += convert(gain, tx.currency, rates, base);
+  }
+  return r2(total);
 }
 
 /** Same "today's move" math as `dailyChange`, but for a single holding's card. */

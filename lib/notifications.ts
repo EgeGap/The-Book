@@ -38,6 +38,29 @@ function identifierFor(expenseId: string): string {
   return `usage-${expenseId}`;
 }
 
+/** Fires an immediate local notification when a holding hits its target or stop-loss. */
+export async function schedulePriceAlert(
+  symbol: string,
+  type: "target" | "stopLoss",
+  price: number,
+  currency: string,
+): Promise<void> {
+  if (!isSupported) return;
+  try {
+    const fmt = price.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
+    const title =
+      type === "target"
+        ? `🎯 ${symbol} — Hedef Fiyata Ulaştı`
+        : `⚠️ ${symbol} — Stop-Loss Seviyesine Düştü`;
+    await Notifications.scheduleNotificationAsync({
+      content: { title, body: `Güncel fiyat: ${fmt} ${currency}` },
+      trigger: null,
+    });
+  } catch {
+    // best-effort
+  }
+}
+
 /** (Re)schedules one "still using this?" notification per active expense. */
 export async function syncUsageNotifications(expenses: Expense[]): Promise<void> {
   if (!isSupported) return;

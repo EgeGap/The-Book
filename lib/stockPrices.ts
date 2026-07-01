@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import { GRAMS_PER_TROY_OUNCE, toQuoteSymbol, type Currency, type StockMarket } from "./constants";
+import { applyBistDelay } from "./priceDelay";
 import type { DailyQuote, StockHolding } from "./types";
 
 /**
@@ -13,15 +14,6 @@ import type { DailyQuote, StockHolding } from "./types";
 
 const YAHOO_CHART_BASE = "https://query1.finance.yahoo.com/v8/finance/chart";
 const QUOTE_REQUEST_TIMEOUT_MS = 10000;
-// Yahoo's endpoint sends no Access-Control-Allow-Origin header, so browsers
-// block it directly; native RN fetch has no such restriction. Route web
-// through a public CORS proxy — try a couple in turn since free proxies
-// rate-limit hard under bursts (e.g. switching the chart period re-fetches
-// every holding at once).
-const CORS_PROXIES = [
-  (url: string) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
-  (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-];
 
 async function fetchWithTimeout(url: string): Promise<Response> {
   const controller = new AbortController();
@@ -33,21 +25,46 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   }
 }
 
-/** Fetches `url`, trying each CORS proxy in turn on web until one succeeds. */
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Yahoo's unofficial endpoint rate-limits by IP with a bare 429 and no
+// Retry-After header. A short exponential backoff smooths over transient
+// limiting (e.g. a burst refresh across many holdings) without hammering it.
+const RATE_LIMIT_RETRY_DELAYS_MS = [1000, 2500];
+
+// If Yahoo is still 429-ing after the retries above, the IP is very likely
+// under a longer temporary ban (these have lasted well past a minute in
+// practice). Retrying every minute from the portfolio auto-refresh would just
+// keep the ban alive — back off entirely for a cooldown window instead, and
+// let requests through again once it elapses.
+const RATE_LIMIT_COOLDOWN_MS = 5 * 60 * 1000;
+let rateLimitedUntil = 0;
+
+/**
+ * Fetches `url`. Native RN fetch talks to Yahoo directly (no CORS there).
+ * On web, browsers block Yahoo directly (no Access-Control-Allow-Origin), so
+ * we route through the local `scripts/cors-proxy.js` sidecar (started
+ * alongside Metro by `npm run web`) — same-machine, CORS-permissive, and
+ * fetches Yahoo server-side where CORS doesn't apply.
+ */
 async function fetchJson(url: string): Promise<any | null> {
-  if (Platform.OS !== "web") {
-    const res = await fetchWithTimeout(url);
-    return res.ok ? res.json() : null;
-  }
-  for (const proxy of CORS_PROXIES) {
-    try {
-      const res = await fetchWithTimeout(proxy(url));
-      if (res.ok) return await res.json();
-    } catch {
-      // try the next proxy
+  if (Date.now() < rateLimitedUntil) return null; // cooling down — don't hit Yahoo at all
+
+  const target =
+    Platform.OS === "web" ? `http://localhost:8788/proxy?url=${encodeURIComponent(url)}` : url;
+  try {
+    for (const delay of [0, ...RATE_LIMIT_RETRY_DELAYS_MS]) {
+      if (delay > 0) await sleep(delay);
+      const res = await fetchWithTimeout(target);
+      if (res.status === 429) continue; // rate-limited — back off and retry
+      rateLimitedUntil = 0; // got a real response — any earlier ban has lifted
+      return res.ok ? res.json() : null;
     }
+    rateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS;
+    return null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 export interface Quote {
@@ -100,12 +117,19 @@ export async function fetchDailyQuote(symbol: string, market: StockMarket): Prom
   }
 }
 
-/** Fetches daily quotes for every holding; symbols whose fetch fails are simply omitted. */
+/**
+ * Fetches daily quotes for every holding; symbols whose fetch fails are simply
+ * omitted. BIST's `current` is resolved through the same 15-min display delay
+ * as the main refresh path; `previousClose` is yesterday's close and doesn't
+ * need delaying.
+ */
 export async function fetchAllDailyQuotes(holdings: StockHolding[]): Promise<DailyQuote[]> {
   const out: DailyQuote[] = [];
   for (const h of holdings) {
     const quote = await fetchDailyQuote(h.symbol, h.market);
-    if (quote) out.push(quote);
+    if (!quote) continue;
+    const resolved = await applyBistDelay(quote.market, quote.symbol, quote.current, quote.currency, Date.now());
+    out.push({ ...quote, current: resolved.price, currency: resolved.currency });
   }
   return out;
 }

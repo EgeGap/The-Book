@@ -9,13 +9,19 @@
     "newArchEnabled": false,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.smcjournal.app"
+      "bundleIdentifier": "com.smcjournal.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.smcjournal.app",
       "adaptiveIcon": {
         "backgroundColor": "#0A0A0A"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -34,6 +40,14 @@
     ],
     "experiments": {
       "typedRoutes": false
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "febb072d-c827-4d61-9a3d-07d8ce90ec75"
+      }
     }
   }
 }

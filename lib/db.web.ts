@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { Expense, StockHolding } from "./types";
+import type { Expense, HoldingTransaction, PriceSnapshot, StockHolding } from "./types";
+import type { Currency, StockMarket } from "./constants";
 
 /**
  * WEB fallback for the data layer.
@@ -114,4 +115,79 @@ export async function bulkInsertHoldings(holdings: StockHolding[]): Promise<void
 
 export async function deleteHolding(id: string): Promise<void> {
   await writeHoldings((await readHoldings()).filter((h) => h.id !== id));
+}
+
+// ── Holding Transactions ───────────────────────────────────────────────────
+
+const TX_KEY = "smc/transactions-web";
+
+async function readTransactions(): Promise<HoldingTransaction[]> {
+  try {
+    const raw = await AsyncStorage.getItem(TX_KEY);
+    return raw ? (JSON.parse(raw) as HoldingTransaction[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function insertTransaction(t: HoldingTransaction): Promise<void> {
+  const all = await readTransactions();
+  all.unshift(t);
+  await AsyncStorage.setItem(TX_KEY, JSON.stringify(all));
+}
+
+export async function getAllTransactions(): Promise<HoldingTransaction[]> {
+  return (await readTransactions()).sort((a, b) => b.createdAt - a.createdAt);
+}
+
+// ── Price snapshots (BIST 15-min-delayed display) ──────────────────────────
+
+const SNAPSHOT_KEY = "smc/price-snapshots-web";
+
+interface StoredSnapshot extends PriceSnapshot {
+  symbol: string;
+  market: StockMarket;
+}
+
+async function readSnapshots(): Promise<StoredSnapshot[]> {
+  try {
+    const raw = await AsyncStorage.getItem(SNAPSHOT_KEY);
+    return raw ? (JSON.parse(raw) as StoredSnapshot[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeSnapshots(list: StoredSnapshot[]): Promise<void> {
+  await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(list));
+}
+
+export async function insertPriceSnapshot(
+  symbol: string,
+  market: StockMarket,
+  price: number,
+  currency: Currency,
+  fetchedAt: number,
+): Promise<void> {
+  const all = await readSnapshots();
+  all.push({ symbol, market, price, currency, fetchedAt });
+  await writeSnapshots(all);
+}
+
+/** Latest snapshot at or before `cutoff`; falls back to the oldest snapshot while history is still younger than the delay. */
+export async function getDelayedPrice(
+  symbol: string,
+  market: StockMarket,
+  cutoff: number,
+): Promise<PriceSnapshot | null> {
+  const matches = (await readSnapshots()).filter((s) => s.symbol === symbol && s.market === market);
+  if (matches.length === 0) return null;
+  const atOrBeforeCutoff = matches.filter((s) => s.fetchedAt <= cutoff).sort((a, b) => b.fetchedAt - a.fetchedAt);
+  if (atOrBeforeCutoff.length > 0) return atOrBeforeCutoff[0];
+  return matches.sort((a, b) => a.fetchedAt - b.fetchedAt)[0];
+}
+
+export async function prunePriceSnapshots(maxAgeMs: number): Promise<void> {
+  const cutoff = Date.now() - maxAgeMs;
+  await writeSnapshots((await readSnapshots()).filter((s) => s.fetchedAt >= cutoff));
 }

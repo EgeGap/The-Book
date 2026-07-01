@@ -1,5 +1,5 @@
 import * as SQLite from "expo-sqlite";
-import type { Expense, PriceHistoryEntry, StockHolding } from "./types";
+import type { Expense, HoldingTransaction, PriceHistoryEntry, PriceSnapshot, StockHolding } from "./types";
 import type { Currency, ExpenseCategory, ExpenseCycle, StockMarket } from "./constants";
 
 const DB_NAME = "smc_journal.db";
@@ -31,6 +31,17 @@ export async function initDb(): Promise<void> {
       startedAt INTEGER NOT NULL,
       createdAt INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS holding_transactions (
+      id TEXT PRIMARY KEY NOT NULL,
+      holdingId TEXT NOT NULL,
+      symbol TEXT NOT NULL,
+      market TEXT NOT NULL,
+      type TEXT NOT NULL,
+      quantity REAL NOT NULL,
+      pricePerUnit REAL NOT NULL,
+      currency TEXT NOT NULL,
+      createdAt INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS holdings (
       id TEXT PRIMARY KEY NOT NULL,
       symbol TEXT NOT NULL,
@@ -45,10 +56,22 @@ export async function initDb(): Promise<void> {
       lastPriceAt INTEGER,
       createdAt INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS price_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      symbol TEXT NOT NULL,
+      market TEXT NOT NULL,
+      price REAL NOT NULL,
+      currency TEXT NOT NULL,
+      fetchedAt INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_price_snapshots_lookup ON price_snapshots(symbol, market, fetchedAt);
   `);
   for (const stmt of [
     `ALTER TABLE expenses ADD COLUMN priceHistory TEXT NOT NULL DEFAULT '[]';`,
     `ALTER TABLE expenses ADD COLUMN lastConfirmedAt INTEGER;`,
+    `ALTER TABLE holding_transactions ADD COLUMN costBasisAtSale REAL;`,
+    `ALTER TABLE holdings ADD COLUMN targetPrice REAL;`,
+    `ALTER TABLE holdings ADD COLUMN stopLoss REAL;`,
   ]) {
     try {
       await db.execAsync(stmt);
@@ -191,10 +214,13 @@ interface HoldingRow {
   lastPriceCurrency: string | null;
   lastPriceAt: number | null;
   createdAt: number;
+  targetPrice: number | null;
+  stopLoss: number | null;
 }
 
 const HOLD_COLUMNS = `id, symbol, market, quantity, costBasis, costCurrency,
-  purchasedAt, notes, lastPrice, lastPriceCurrency, lastPriceAt, createdAt`;
+  purchasedAt, notes, lastPrice, lastPriceCurrency, lastPriceAt, createdAt,
+  targetPrice, stopLoss`;
 
 function rowToHolding(r: HoldingRow): StockHolding {
   return {
@@ -210,6 +236,8 @@ function rowToHolding(r: HoldingRow): StockHolding {
     lastPriceCurrency: r.lastPriceCurrency as Currency | null,
     lastPriceAt: r.lastPriceAt,
     createdAt: r.createdAt,
+    targetPrice: r.targetPrice ?? null,
+    stopLoss: r.stopLoss ?? null,
   };
 }
 
@@ -227,6 +255,8 @@ function holdingParams(h: StockHolding): (string | number | null)[] {
     h.lastPriceCurrency,
     h.lastPriceAt,
     h.createdAt,
+    h.targetPrice ?? null,
+    h.stopLoss ?? null,
   ];
 }
 
@@ -251,7 +281,7 @@ export async function upsertHolding(h: StockHolding): Promise<void> {
   const db = await getDb();
   await db.runAsync(
     `INSERT OR REPLACE INTO holdings (${HOLD_COLUMNS})
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     holdingParams(h),
   );
 }
@@ -266,4 +296,66 @@ export async function bulkInsertHoldings(holdings: StockHolding[]): Promise<void
 export async function deleteHolding(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync(`DELETE FROM holdings WHERE id = ?`, [id]);
+}
+
+// ── Holding Transactions ───────────────────────────────────────────────────
+
+export async function insertTransaction(t: HoldingTransaction): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO holding_transactions
+     (id, holdingId, symbol, market, type, quantity, pricePerUnit, currency, createdAt, costBasisAtSale)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    [t.id, t.holdingId, t.symbol, t.market, t.type, t.quantity, t.pricePerUnit, t.currency, t.createdAt, t.costBasisAtSale ?? null],
+  );
+}
+
+export async function getAllTransactions(): Promise<HoldingTransaction[]> {
+  const db = await getDb();
+  return db.getAllAsync<HoldingTransaction>(
+    `SELECT * FROM holding_transactions ORDER BY createdAt DESC`,
+  );
+}
+
+// ── Price snapshots (BIST 15-min-delayed display) ──────────────────────────
+
+export async function insertPriceSnapshot(
+  symbol: string,
+  market: StockMarket,
+  price: number,
+  currency: Currency,
+  fetchedAt: number,
+): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO price_snapshots (symbol, market, price, currency, fetchedAt) VALUES (?,?,?,?,?)`,
+    [symbol, market, price, currency, fetchedAt],
+  );
+}
+
+/** Latest snapshot at or before `cutoff`; falls back to the oldest snapshot while history is still younger than the delay. */
+export async function getDelayedPrice(
+  symbol: string,
+  market: StockMarket,
+  cutoff: number,
+): Promise<PriceSnapshot | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<PriceSnapshot>(
+    `SELECT price, currency, fetchedAt FROM price_snapshots
+     WHERE symbol = ? AND market = ? AND fetchedAt <= ?
+     ORDER BY fetchedAt DESC LIMIT 1`,
+    [symbol, market, cutoff],
+  );
+  if (row) return row;
+  return db.getFirstAsync<PriceSnapshot>(
+    `SELECT price, currency, fetchedAt FROM price_snapshots
+     WHERE symbol = ? AND market = ?
+     ORDER BY fetchedAt ASC LIMIT 1`,
+    [symbol, market],
+  );
+}
+
+export async function prunePriceSnapshots(maxAgeMs: number): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(`DELETE FROM price_snapshots WHERE fetchedAt < ?`, [Date.now() - maxAgeMs]);
 }

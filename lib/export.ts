@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { format } from "date-fns";
-import type { Expense, StockHolding } from "./types";
+import type { Expense, HoldingTransaction, StockHolding } from "./types";
 
 function csvCell(value: unknown): string {
   if (value == null) return "";
@@ -89,4 +89,27 @@ export async function exportHoldings(holdings: StockHolding[], fmt: "json" | "cs
   const stamp = format(new Date(), "yyyyMMdd-HHmm");
   const content = fmt === "json" ? holdingsToJSON(holdings) : holdingsToCSV(holdings);
   await saveAndShare(`smc-portfoy-${stamp}.${fmt}`, content, mimeFor(fmt));
+}
+
+// ── Full backup ──────────────────────────────────────────────────────────────
+
+/** Single JSON file containing all app data: expenses, holdings, transactions. */
+export async function exportAll(
+  expenses: Expense[],
+  holdings: StockHolding[],
+  transactions: HoldingTransaction[],
+): Promise<void> {
+  const backup = {
+    version: 1,
+    exportedAt: Date.now(),
+    expenses,
+    holdings,
+    transactions,
+  };
+  const stamp = format(new Date(), "yyyyMMdd-HHmm");
+  await saveAndShare(
+    `smc-yedek-${stamp}.json`,
+    JSON.stringify(backup, null, 2),
+    "application/json",
+  );
 }

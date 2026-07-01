@@ -4,16 +4,16 @@ import { Screen } from "@/components/ui/Screen";
 import { AppText } from "@/components/ui/Text";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Field, TextField } from "@/components/ui/Field";
+import { Field } from "@/components/ui/Field";
 import { Segmented } from "@/components/ui/Segmented";
-import { exportExpenses } from "@/lib/export";
-import { parseNum } from "@/lib/utils";
+import { exportAll } from "@/lib/export";
+import { pickJSON, validateUnifiedBackup } from "@/lib/importData";
 import { CURRENCIES } from "@/lib/constants";
 import { S } from "@/lib/strings";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useExpenseStore } from "@/store/useExpenseStore";
-import type { Settings } from "@/lib/types";
+import { usePortfolioStore } from "@/store/usePortfolioStore";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -31,25 +31,49 @@ export default function SettingsScreen() {
   const user = useAuthStore((st) => st.user);
   const signOut = useAuthStore((st) => st.signOut);
   const expenses = useExpenseStore((st) => st.expenses);
-  const [busy, setBusy] = useState(false);
+  const importExpenses = useExpenseStore((st) => st.importExpenses);
+  const holdings = usePortfolioStore((st) => st.holdings);
+  const transactions = usePortfolioStore((st) => st.transactions);
+  const importHoldings = usePortfolioStore((st) => st.importHoldings);
+  const importTransactions = usePortfolioStore((st) => st.importTransactions);
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
 
-  const numUpdate = (key: "usdToTry") => (text: string) => {
-    const n = parseNum(text);
-    if (Number.isFinite(n) && n >= 0) s.update({ [key]: n } as Partial<Settings>);
-  };
-
-  const doExport = async (fmt: "json" | "csv") => {
-    if (expenses.length === 0) {
-      Alert.alert(S.settings.nothingExport, S.settings.nothingExportBody);
+  const doExportAll = async () => {
+    if (expenses.length === 0 && holdings.length === 0) {
+      Alert.alert(S.settings.nothingExport, S.settings.backupNothingExport);
       return;
     }
     try {
-      setBusy(true);
-      await exportExpenses(expenses, fmt);
+      setExporting(true);
+      await exportAll(expenses, holdings, transactions);
     } catch {
       Alert.alert(S.settings.exportFail, S.settings.exportFailBody);
     } finally {
-      setBusy(false);
+      setExporting(false);
+    }
+  };
+
+  const doImportAll = async () => {
+    try {
+      setImporting(true);
+      const raw = await pickJSON();
+      if (raw == null) return;
+      const backup = validateUnifiedBackup(raw);
+      if (backup.expenses.length === 0 && backup.holdings.length === 0 && backup.transactions.length === 0) {
+        Alert.alert(S.data.importFail, S.settings.backupImportNone);
+        return;
+      }
+      const [e, h, t] = await Promise.all([
+        importExpenses(backup.expenses),
+        importHoldings(backup.holdings),
+        importTransactions(backup.transactions),
+      ]);
+      Alert.alert(S.data.importDone, S.settings.backupImportDone(e, h, t));
+    } catch {
+      Alert.alert(S.data.importFail, S.settings.backupImportFail);
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -77,15 +101,8 @@ export default function SettingsScreen() {
             options={CURRENCIES.map((cur) => ({ label: cur, value: cur }))}
           />
         </Field>
-        <Field label={S.expense.fxUsd}>
-          <TextField
-            defaultValue={String(s.usdToTry)}
-            keyboardType="decimal-pad"
-            onChangeText={numUpdate("usdToTry")}
-          />
-        </Field>
         <AppText variant="muted" className="ml-1">
-          {S.expense.fxHint}
+          {S.expense.fxAuto}
         </AppText>
       </Section>
 
@@ -100,15 +117,24 @@ export default function SettingsScreen() {
         />
       </Section>
 
-      <Section title={S.settings.export}>
-        <View className="flex-row gap-3">
-          <View className="flex-1">
-            <Button label="JSON" variant="secondary" icon="code-outline" loading={busy} onPress={() => doExport("json")} />
-          </View>
-          <View className="flex-1">
-            <Button label="CSV" variant="secondary" icon="grid-outline" loading={busy} onPress={() => doExport("csv")} />
-          </View>
-        </View>
+      <Section title={S.settings.backup}>
+        <Button
+          label={S.settings.backupExport}
+          variant="secondary"
+          icon="download-outline"
+          loading={exporting}
+          onPress={doExportAll}
+        />
+        <Button
+          label={S.settings.backupImport}
+          variant="ghost"
+          icon="cloud-upload-outline"
+          loading={importing}
+          onPress={doImportAll}
+        />
+        <AppText variant="muted" className="ml-1">
+          Giderler + portföy + işlem geçmişi tek JSON dosyasında
+        </AppText>
       </Section>
 
       <AppText variant="muted" className="mb-4 text-center">

@@ -4,9 +4,9 @@ import { Card } from "./ui/Card";
 import { AppText } from "./ui/Text";
 import { Segmented } from "./ui/Segmented";
 import type { Currency } from "@/lib/constants";
-import { dailyChange, portfolioSummary, type ProfitResult } from "@/lib/portfolioAnalytics";
+import { dailyChange, portfolioSummary, realizedPnl, type ProfitResult } from "@/lib/portfolioAnalytics";
 import type { FxRates } from "@/lib/expenseAnalytics";
-import type { DailyQuote, StockHolding } from "@/lib/types";
+import type { DailyQuote, HoldingTransaction, StockHolding } from "@/lib/types";
 import { S } from "@/lib/strings";
 import { formatAmount } from "@/lib/utils";
 import { useColors } from "@/lib/theme";
@@ -24,6 +24,7 @@ interface ProfitCardProps {
   /** Daily quotes fetched by the parent (shared with the holding cards below); null until fetched. */
   dailyQuotes: DailyQuote[] | null;
   dailyLoading: boolean;
+  transactions: HoldingTransaction[];
 }
 
 /**
@@ -41,6 +42,7 @@ export function ProfitCard({
   onModeChange,
   dailyQuotes,
   dailyLoading,
+  transactions,
 }: ProfitCardProps) {
   const c = useColors();
 
@@ -58,6 +60,9 @@ export function ProfitCard({
   const pct = result?.percent ?? null;
   const positive = (pct ?? 0) >= 0;
   const showSpinner = mode === "daily" && dailyLoading;
+
+  const realized = useMemo(() => realizedPnl(transactions, rates, base), [transactions, rates, base]);
+  const hasSells = transactions.some((t) => t.type === "sell" && t.costBasisAtSale != null);
 
   return (
     <Card className="mb-4">
@@ -98,6 +103,16 @@ export function ProfitCard({
       <AppText variant="muted" className="mt-3">
         {mode === "all" ? S.portfolio.noteAll : S.portfolio.noteDaily}
       </AppText>
+
+      {hasSells && !hideBalance && (
+        <View className="mt-2 flex-row items-center justify-between border-t border-neutral-100 pt-2 dark:border-neutral-800">
+          <AppText variant="muted">{S.portfolio.realizedGain}</AppText>
+          <AppText className={`text-sm font-semibold ${realized >= 0 ? "text-win" : "text-loss"}`}>
+            {realized >= 0 ? "+" : ""}
+            {formatAmount(realized, base)}
+          </AppText>
+        </View>
+      )}
     </Card>
   );
 }

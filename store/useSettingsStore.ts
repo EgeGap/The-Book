@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { zustandStorage, STORAGE_KEYS } from "@/lib/storage";
+import { fetchUsdToTry } from "@/lib/fxRates";
 import type { Settings } from "@/lib/types";
 
 const DEFAULTS: Settings = {
@@ -13,6 +14,7 @@ interface SettingsState extends Settings {
   hydrated: boolean;
   update: (patch: Partial<Settings>) => void;
   resetSettings: () => void;
+  refreshFxRates: () => Promise<void>;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -22,6 +24,10 @@ export const useSettingsStore = create<SettingsState>()(
       hydrated: false,
       update: (patch) => set(patch),
       resetSettings: () => set({ ...DEFAULTS }),
+      refreshFxRates: async () => {
+        const rate = await fetchUsdToTry();
+        if (rate != null) set({ usdToTry: rate });
+      },
     }),
     {
       name: STORAGE_KEYS.settings,

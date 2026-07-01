@@ -40,7 +40,7 @@ export interface Settings {
 
   // Expenses / currency
   baseCurrency: Currency;
-  usdToTry: number; // manual FX (no auto-fetch — stays simple & offline)
+  usdToTry: number; // auto-fetched from frankfurter.app on startup; persisted as fallback
   lastUsedExpense?: LastUsedExpense;
   lastDigestSeenAt?: number;
 }
@@ -59,6 +59,15 @@ export interface StockHolding {
   lastPriceCurrency: Currency | null;
   lastPriceAt: number | null;
   createdAt: number;
+  targetPrice?: number | null;
+  stopLoss?: number | null;
+}
+
+/** One historical price sample, kept just long enough to serve BIST's 15-min-delayed display. */
+export interface PriceSnapshot {
+  price: number;
+  currency: Currency;
+  fetchedAt: number;
 }
 
 /** A current price paired with the previous trading day's close, for daily P&L. */
@@ -68,6 +77,22 @@ export interface DailyQuote {
   current: number;
   previousClose: number;
   currency: Currency;
+}
+
+export type TransactionType = "buy" | "buy_more" | "sell";
+
+/** A single portfolio transaction — recorded on every buy/add/sell action. */
+export interface HoldingTransaction {
+  id: string;
+  holdingId: string;
+  symbol: string;
+  market: StockMarket;
+  type: TransactionType;
+  quantity: number;
+  pricePerUnit: number;
+  currency: Currency;
+  createdAt: number;
+  costBasisAtSale?: number | null;
 }
 
 /** Local-only account record (AsyncStorage via useAuthStore). */

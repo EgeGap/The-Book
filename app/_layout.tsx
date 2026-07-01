@@ -22,7 +22,10 @@ import { useAuthStore } from "@/store/useAuthStore";
 if (Platform.OS === "web") {
   const origError = console.error;
   console.error = (...args: unknown[]) => {
-    if (typeof args[0] === "string" && args[0].includes("Unknown event handler property")) {
+    if (typeof args[0] === "string" && (
+      args[0].includes("Unknown event handler property") ||
+      args[0].includes("Can't perform a React state update on a component that hasn't mounted yet")
+    )) {
       return;
     }
     origError(...args);
@@ -51,6 +54,7 @@ export default function RootLayout() {
   const settingsHydrated = useSettingsStore((s) => s.hydrated);
   const hydrateExpenses = useExpenseStore((s) => s.hydrate);
   const hydrateHoldings = usePortfolioStore((s) => s.hydrate);
+  const refreshFxRates = useSettingsStore((s) => s.refreshFxRates);
   const { setColorScheme } = useColorScheme();
 
   // One-time data bootstrap: schema -> seed -> load into memory.
@@ -61,6 +65,7 @@ export default function RootLayout() {
         await deleteSeededExpenses(); // one-time cleanup of the old demo expenses
         await hydrateExpenses();
         await hydrateHoldings();
+        refreshFxRates(); // fire-and-forget; updates usdToTry in background
       } finally {
         setReady(true);
       }
@@ -100,6 +105,8 @@ export default function RootLayout() {
             <Stack.Screen name="expense/[id]" />
             <Stack.Screen name="portfolio/new" options={{ presentation: "modal" }} />
             <Stack.Screen name="portfolio/[id]" />
+            <Stack.Screen name="portfolio/history" />
+            <Stack.Screen name="portfolio/report" />
           </Stack>
         )}
       </SafeAreaProvider>

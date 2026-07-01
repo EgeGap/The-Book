@@ -12,27 +12,40 @@ import {
   type StockMarket,
 } from "./constants";
 import { uid } from "./utils";
-import type { Expense, PriceHistoryEntry, StockHolding } from "./types";
+import type { Expense, HoldingTransaction, PriceHistoryEntry, StockHolding, TransactionType } from "./types";
 
-/**
- * Import data exported from another device. Picks a JSON file, reads it
- * (browser download on web, file system on native) and returns the parsed
- * array. Throws on cancel-less read/parse errors; returns null when cancelled.
- */
-export async function pickJSONArray(): Promise<unknown[] | null> {
+async function readPickedFile(): Promise<string | null> {
   const res = await DocumentPicker.getDocumentAsync({
     type: "application/json",
     copyToCacheDirectory: true,
   });
   if (res.canceled || !res.assets?.[0]) return null;
   const uri = res.assets[0].uri;
-  const text =
-    Platform.OS === "web"
-      ? await fetch(uri).then((r) => r.text())
-      : await FileSystem.readAsStringAsync(uri);
+  return Platform.OS === "web"
+    ? await fetch(uri).then((r) => r.text())
+    : await FileSystem.readAsStringAsync(uri);
+}
+
+/**
+ * Pick a JSON file and return its parsed content as an array.
+ * Returns null on cancel; throws on parse error or non-array.
+ */
+export async function pickJSONArray(): Promise<unknown[] | null> {
+  const text = await readPickedFile();
+  if (text == null) return null;
   const parsed = JSON.parse(text);
   if (!Array.isArray(parsed)) throw new Error("not-an-array");
   return parsed;
+}
+
+/**
+ * Pick a JSON file and return its parsed content as any value.
+ * Returns null on cancel; throws on parse error.
+ */
+export async function pickJSON(): Promise<unknown> {
+  const text = await readPickedFile();
+  if (text == null) return null;
+  return JSON.parse(text);
 }
 
 const asStr = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -114,4 +127,61 @@ export function validateHoldings(arr: unknown[]): StockHolding[] {
     });
   }
   return out;
+}
+
+const TX_TYPES: readonly TransactionType[] = ["buy", "buy_more", "sell"];
+
+/** Validate + normalize raw objects into holding transactions. */
+export function validateTransactions(arr: unknown[]): HoldingTransaction[] {
+  const out: HoldingTransaction[] = [];
+  const now = Date.now();
+  for (const item of arr) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const holdingId = asStr(o.holdingId);
+    const symbol = asStr(o.symbol).trim().toUpperCase();
+    const quantity = Number(o.quantity);
+    const pricePerUnit = Number(o.pricePerUnit);
+    if (!holdingId || !symbol || !Number.isFinite(quantity) || !Number.isFinite(pricePerUnit)) continue;
+
+    out.push({
+      id: asStr(o.id) || uid("tx"),
+      holdingId,
+      symbol,
+      market: inEnum<StockMarket>(STOCK_MARKETS, o.market, "BIST"),
+      type: inEnum<TransactionType>(TX_TYPES, o.type, "buy"),
+      quantity,
+      pricePerUnit,
+      currency: inEnum<Currency>(CURRENCIES, o.currency, "TRY"),
+      createdAt: numOr(o.createdAt, now),
+      costBasisAtSale:
+        typeof o.costBasisAtSale === "number" && Number.isFinite(o.costBasisAtSale)
+          ? o.costBasisAtSale
+          : undefined,
+    });
+  }
+  return out;
+}
+
+export interface UnifiedBackup {
+  expenses: Expense[];
+  holdings: StockHolding[];
+  transactions: HoldingTransaction[];
+}
+
+/**
+ * Validate and extract all data from a unified backup object.
+ * Tolerant: missing sections default to empty arrays so a partial backup
+ * still imports cleanly.
+ */
+export function validateUnifiedBackup(raw: unknown): UnifiedBackup {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("invalid-format");
+  }
+  const o = raw as Record<string, unknown>;
+  return {
+    expenses: Array.isArray(o.expenses) ? validateExpenses(o.expenses) : [],
+    holdings: Array.isArray(o.holdings) ? validateHoldings(o.holdings) : [],
+    transactions: Array.isArray(o.transactions) ? validateTransactions(o.transactions) : [],
+  };
 }

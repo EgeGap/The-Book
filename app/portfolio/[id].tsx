@@ -60,7 +60,7 @@ export default function HoldingDetailScreen() {
           </Pressable>
         </View>
 
-        <HoldingForm initial={holding} submitting={saving} onSubmit={handleSubmit} />
+        <HoldingForm initial={holding} submitting={saving} onSubmit={handleSubmit} showAlerts />
       </KeyboardAvoidingView>
     </Screen>
   );
