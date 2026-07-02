@@ -4,14 +4,15 @@
 
 This is an Expo Router React Native app. Route files live under `app/`: tab screens are in `app/(tabs)/`, modal/detail screens are in feature folders such as `app/portfolio/` and `app/expense/`, and global navigation setup is in `app/_layout.tsx`.
 
-Reusable UI belongs in `components/`, with shared primitives in `components/ui/`. State is managed with Zustand stores in `store/`. Business logic, data access, analytics, constants, strings, and utilities live in `lib/`. Platform-specific persistence is split between `lib/db.sqlite.ts` for native and `lib/db.web.ts` for web. Tests live in `lib/__tests__/`.
+Reusable UI belongs in `components/`, with shared primitives in `components/ui/`. State is managed with Zustand stores in `store/`. Business logic, data access, analytics, constants, strings, and utilities live in `lib/`. Platform-specific persistence is split between `lib/db.sqlite.ts` for native and `lib/dbWeb.ts` for web, dispatched through `lib/db.ts`. Optional Firebase sync lives in `lib/cloudSync.ts`, quote proxy helpers live in `lib/proxyUrl.ts`, and tests live in `lib/__tests__/`.
 
 ## Build, Test, and Development Commands
 
 - `npm start`: start the Expo development server.
 - `npm run android`: launch the app through Expo on Android.
 - `npm run ios`: launch the app through Expo on iOS.
-- `npm run web`: run the web build locally.
+- `npm run web`: run the web app locally with the CORS proxy sidecar.
+- `npm run proxy`: run only the local quote/FX CORS proxy on port `8788`.
 - `npm test`: run Jest once with `jest-expo`.
 - `npm run test:watch`: run Jest in watch mode.
 - `npm run lint`: run Expo lint checks.
@@ -35,4 +36,4 @@ Pull requests should include a short summary, test results, and screenshots or s
 
 ## Security & Configuration Tips
 
-Do not commit secrets or API keys. Local app data is stored on-device through SQLite or AsyncStorage depending on platform. Treat public finance endpoints and CORS proxies as best-effort dependencies; failures should not break portfolio or expense workflows.
+Do not commit secrets or API keys. Firebase client identifiers belong in local `EXPO_PUBLIC_FIREBASE_*` environment variables when sync/auth is needed. Local app data is stored on-device through SQLite or AsyncStorage depending on platform, and signed-in users may sync a backup-shaped snapshot to Firestore. Treat public finance endpoints and CORS proxies as best-effort dependencies; failures should not break portfolio or expense workflows.
